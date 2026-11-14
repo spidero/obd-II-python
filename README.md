@@ -1,9 +1,9 @@
 # OBD Tool
 
 A small OBD-II workshop tool in Python: live data, reading and clearing trouble codes,
-readiness monitors. One core, three front ends:
+readiness monitors and a **vehicle health check** with a 0–100 score. One core, three front ends:
 
-- **CLI** – `obd-tool info | live | dtc | clear | pids | ports`
+- **CLI** – `obd-tool info | live | dtc | clear | health | pids | ports`
 - **Web UI** – `obd-tool web`, open it from a laptop or a phone
 - **Desktop GUI** – `obd-tool gui`, the same UI in a native window (pywebview)
 
@@ -11,9 +11,9 @@ A built-in **ELM327 simulator** (`--sim`) lets you run everything without a car.
 
 ![Dashboard](docs/screenshots/car-dashboard-dark.png)
 
-| Trouble codes | Vehicle info | Phone |
-|---|---|---|
-| ![DTC](docs/screenshots/sim-dtc.png) | ![Info](docs/screenshots/car-info.png) | ![Mobile](docs/screenshots/car-mobile.png) |
+| Health check | Trouble codes | Vehicle info | Phone |
+|---|---|---|---|
+| ![Health](docs/screenshots/sim-health-faults.png) | ![DTC](docs/screenshots/sim-dtc.png) | ![Info](docs/screenshots/car-info.png) | ![Mobile](docs/screenshots/car-mobile.png) |
 
 ## Tested hardware
 
@@ -54,6 +54,8 @@ obd-tool live RPM SPEED COOLANT_TEMP -i 0.25 --csv drive.csv
 obd-tool pids                        # parameters supported by the car
 obd-tool dtc                         # stored and pending trouble codes
 obd-tool clear                       # clear codes (asks for confirmation)
+obd-tool health                      # 30 s health check, score 0-100
+obd-tool health -d 60 --html report.html --json
 obd-tool web                         # web UI on http://localhost:8090
 obd-tool web --host 0.0.0.0          # ...reachable from the local network
 obd-tool gui                         # desktop window
@@ -63,6 +65,38 @@ obd-tool --sim live                  # anything above, against the simulator
 Options can also be set with environment variables: `OBD_PORT`, `OBD_BAUD`,
 `OBD_PROTOCOL`, `OBD_SIM=1`, `OBD_WEB_HOST`, `OBD_WEB_PORT`.
 Use the stable `/dev/serial/by-id/...` path instead of `/dev/ttyUSB0` when possible.
+
+### Health check
+
+Run it with the engine running, warm (>70 °C) and idling. The check reads trouble codes,
+readiness monitors and counters, samples live data (the last third only the O2 sensors, at a
+higher rate) and applies rules of thumb for petrol engines:
+
+| Area | What is checked |
+|---|---|
+| Trouble codes | MIL, stored and pending codes, distance driven with MIL on |
+| Readiness | incomplete monitors; few km / warm-ups since clearing = "codes cleared recently" |
+| Electrical | charging voltage with the engine running (13.4–14.8 V), resting battery voltage |
+| Cooling | overheating (>104 / >108 °C), thermostat stuck open (<75 °C after 15 min) |
+| Fuel mixture | short + long term fuel trim per bank (±10 % warning, ±20 % critical) |
+| Idle | rpm stability while standing, high idle, intake vacuum (MAP) at idle |
+| O2 sensors | upstream sensor switching rate and amplitude |
+| Catalyst | downstream sensor steady vs. following the upstream one |
+
+Each finding is OK / info / warning / critical, or "not evaluated" when a precondition
+(engine running, engine warm, car standing) is not met. The score starts at 100 and loses
+points per finding; any critical finding caps it at 59 (Poor), any warning at 84 (Fair).
+The report can be downloaded as HTML (printable) or JSON. It is an indicative check,
+not a replacement for a workshop diagnosis.
+
+Try it without a car using simulator faults:
+
+```bash
+obd-tool --sim --sim-no-codes health -d 15                       # healthy car
+obd-tool --sim --sim-fault lean --sim-fault catalyst health -d 15
+```
+
+Faults: `lean`, `rich`, `charging`, `overheat`, `rough_idle`, `lazy_o2`, `catalyst`, `cleared`.
 
 ### Clearing trouble codes
 
@@ -84,6 +118,9 @@ requires ticking a checkbox, and the API refuses requests without `"confirm": tr
 | GET | `/api/read?keys=RPM,SPEED` | one-shot read |
 | GET | `/api/dtc` | stored + pending codes |
 | POST | `/api/dtc/clear` | `{"confirm": true}` |
+| WS | `/ws/health` | send `{"duration": 30}`, receive progress and the report |
+| GET | `/api/health/last` | last health report (JSON) |
+| GET | `/api/health/report.html` | last health report (HTML, `?download=1`) |
 | WS | `/ws/live` | send `{"keys": [...], "interval": 0.5}`, receive readings |
 
 The web server has no authentication. Keep it on `127.0.0.1` (default) or a trusted
@@ -120,6 +157,8 @@ src/obd_tool/
   core/simulator.py   ELM327 emulator on a pseudo terminal
   core/pids.py        parameter catalogue (labels, units, groups)
   core/dtc.py         DTC encoding and descriptions
+  core/health.py      health check: sampling + rules (pure evaluate())
+  core/report_html.py printable HTML report
   cli.py              Typer CLI
   web/server.py       FastAPI + WebSocket
   web/static/         UI (plain HTML/CSS/JS, no CDN – works offline)

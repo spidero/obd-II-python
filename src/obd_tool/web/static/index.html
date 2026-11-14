@@ -16,6 +16,7 @@
     <nav class="tabs" role="tablist">
       <button role="tab" data-tab="dash" aria-selected="true">Dashboard</button>
       <button role="tab" data-tab="dtc">Trouble codes <span class="badge" id="dtc-badge" hidden></span></button>
+      <button role="tab" data-tab="health">Health check</button>
       <button role="tab" data-tab="info">Vehicle info</button>
       <button role="tab" data-tab="conn">Connection</button>
     </nav>
@@ -64,6 +65,33 @@
         </div>
       </div>
       <div id="dtc-list"><p class="empty">Click “Read codes”.</p></div>
+    </section>
+
+    <!-- Health check -->
+    <section id="tab-health" class="tab">
+      <div class="card health-intro">
+        <div>
+          <h2>Vehicle health check</h2>
+          <p class="muted">Reads trouble codes and readiness monitors, samples live data and rates the car's
+            condition: charging, cooling, fuel mixture, idle, O2 sensors and catalyst.
+            For best results run it with the <strong>engine running, warm (&gt;70&nbsp;°C) and idling</strong>.</p>
+        </div>
+        <div class="health-controls">
+          <label class="field-inline">Duration
+            <select id="sel-health-duration">
+              <option value="15">15 s</option>
+              <option value="30" selected>30 s</option>
+              <option value="60">60 s</option>
+            </select>
+          </label>
+          <button class="btn btn-primary" id="btn-health">Run health check</button>
+        </div>
+        <div class="progress" id="health-progress" hidden>
+          <div class="progress-bar"><span id="health-bar"></span></div>
+          <span class="muted" id="health-msg"></span>
+        </div>
+      </div>
+      <div id="health-result"></div>
     </section>
 
     <!-- Info -->

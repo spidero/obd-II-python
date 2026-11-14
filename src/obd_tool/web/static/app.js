@@ -74,6 +74,7 @@ function showTab(name) {
   store.set("tab", name);
   if (name === "info" && ui.state === "connected") loadInfo();
   if (name === "conn") loadPorts();
+  if (name === "health" && !$("#health-result").children.length) loadLastHealth();
 }
 $$(".tabs button").forEach(b => b.addEventListener("click", () => showTab(b.dataset.tab)));
 
@@ -98,6 +99,7 @@ function applyState(s) {
   }
   const online = s.state === "connected";
   $$("#btn-dtc-read, #btn-dtc-clear, #btn-info, #btn-params").forEach(b => (b.disabled = !online));
+  $("#btn-health").disabled = !online || healthRunning;
   $("#dash-empty").hidden = online;
   if (online && prev !== "connected") onConnected();
   if (!online && prev === "connected") closeLive();
@@ -366,6 +368,94 @@ dlgClear.addEventListener("close", async () => {
     await readDtc(true);
   } catch (e) { toast(e.message, true); }
 });
+
+// ---------------------------------------------------------------- health check
+const SEV_LABEL = { critical: "Critical", warn: "Warning", info: "Info", ok: "OK", skipped: "Not evaluated" };
+let healthRunning = false;
+
+function downloadBlob(blob, filename) {
+  const a = el("a", { href: URL.createObjectURL(blob), download: filename });
+  document.body.append(a);
+  a.click();
+  a.remove();
+}
+
+function renderHealth(r) {
+  const box = $("#health-result");
+  box.replaceChildren();
+  const ring = el("div", { class: "score-ring", "data-grade": r.grade, style: `--p:${r.score}` },
+    el("div", {}, el("div", {}, el("b", { text: String(r.score) }), el("span", { text: r.grade }))));
+  const chips = el("div", { class: "chips" });
+  for (const k of ["critical", "warn", "info", "ok", "skipped"]) {
+    if (r.counts[k]) chips.append(el("span", { class: "chip " + k, text: `${r.counts[k]} ${SEV_LABEL[k].toLowerCase()}` }));
+  }
+  const v = r.vehicle || {};
+  const headline = { Good: "The car looks healthy", Fair: "Some things need attention", Poor: "Problems found" }[r.grade];
+  const meta = el("div", { class: "health-meta" },
+    el("h2", { text: headline }),
+    chips,
+    el("div", { class: "muted", text: `${r.created.replace("T", " ")} · ${Math.round(r.duration)} s · ${r.samples} samples`
+      + (v.simulated ? " · simulator" : "") }));
+  const jsonBtn = el("button", { class: "btn", type: "button", text: "Download JSON" });
+  jsonBtn.addEventListener("click", () => downloadBlob(
+    new Blob([JSON.stringify(r, null, 2)], { type: "application/json" }),
+    `health-report-${r.created.replace(/:/g, "-")}.json`));
+  const actions = el("div", { class: "actions" },
+    el("a", { class: "btn", href: "/api/health/report.html", target: "_blank", rel: "noopener", text: "Printable report" }),
+    el("a", { class: "btn", href: "/api/health/report.html?download=1", text: "Download HTML" }),
+    jsonBtn);
+  box.append(el("div", { class: "card health-summary" }, ring, meta, el("span", { class: "spacer" }), actions));
+  for (const f of r.findings) {
+    box.append(el("div", { class: "finding " + f.severity },
+      el("span", { class: "sev", text: SEV_LABEL[f.severity] }),
+      el("span", { class: "title", text: f.title }, el("span", { class: "area", text: f.area })),
+      el("span", { class: "fval", text: f.value || "" }),
+      el("span", { class: "detail", text: f.detail || "" })));
+  }
+  box.append(el("p", { class: "disclaimer", text: r.disclaimer }));
+}
+
+function runHealth() {
+  if (healthRunning) return;
+  healthRunning = true;
+  const btn = $("#btn-health");
+  btn.disabled = true;
+  $("#health-progress").hidden = false;
+  $("#health-bar").style.width = "0%";
+  $("#health-msg").textContent = "Starting…";
+  // pause the dashboard so the check gets the full adapter bandwidth
+  const wasPaused = ui.paused;
+  ui.paused = true;
+  sendLiveConfig();
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  const ws = new WebSocket(`${proto}://${location.host}/ws/health`);
+  ws.onopen = () => ws.send(JSON.stringify({ duration: parseInt($("#sel-health-duration").value, 10) }));
+  ws.onmessage = ev => {
+    const msg = JSON.parse(ev.data);
+    if (msg.error) { toast(msg.error, true); return; }
+    if (msg.progress !== undefined) {
+      $("#health-bar").style.width = `${Math.round(msg.progress * 100)}%`;
+      $("#health-msg").textContent = msg.message;
+    }
+    if (msg.report) {
+      renderHealth(msg.report);
+      toast(`Health check: ${msg.report.score}/100 – ${msg.report.grade}`);
+    }
+  };
+  ws.onclose = () => {
+    healthRunning = false;
+    btn.disabled = ui.state !== "connected";
+    $("#health-progress").hidden = true;
+    ui.paused = wasPaused;
+    sendLiveConfig();
+  };
+  ws.onerror = () => toast("Health check connection failed", true);
+}
+$("#btn-health").addEventListener("click", runHealth);
+
+async function loadLastHealth() {
+  try { renderHealth(await api("/api/health/last")); } catch { /* no report yet */ }
+}
 
 // ---------------------------------------------------------------- info
 function fillDl(dl, rows) {

@@ -11,6 +11,7 @@
   --warn: #f5c542;
   --danger: #ff5d5d;
   --danger-ink: #fff;
+  --info: #5b9dff;
   --spark: #f5a524;
   --radius: 10px;
   --mono: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
@@ -31,6 +32,7 @@
     --ok: #138a5b;
     --warn: #a77700;
     --danger: #d22f2f;
+    --info: #2f6fd2;
     --spark: #c77d00;
     color-scheme: light;
   }
@@ -105,6 +107,7 @@ main { max-width: 1280px; margin: 0 auto; padding: 1rem; }
   padding: .45rem .85rem; cursor: pointer; white-space: nowrap;
 }
 .btn:hover:not(:disabled) { border-color: var(--muted); }
+a.btn { display: inline-block; text-decoration: none; color: var(--text); }
 .btn:disabled { opacity: .45; cursor: not-allowed; }
 .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
 .btn-danger { background: transparent; border-color: var(--danger); color: var(--danger); font-weight: 600; }
@@ -201,7 +204,51 @@ dialog::backdrop { background: rgb(0 0 0 / .55); }
 }
 .toast.err { border-color: var(--danger); color: var(--danger); }
 
+/* ---------- health check ---------- */
+.health-intro { display: grid; grid-template-columns: 1fr auto; gap: 1rem; align-items: center; }
+.health-intro p { margin: .4rem 0 0; max-width: 70ch; }
+.health-controls { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+.progress { grid-column: 1 / -1; display: flex; gap: .75rem; align-items: center; }
+.progress-bar { flex: 1; height: 8px; border-radius: 99px; background: var(--surface-2); overflow: hidden; }
+.progress-bar span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+.health-summary { display: flex; gap: 1.5rem; align-items: center; flex-wrap: wrap; }
+.score-ring { --c: var(--ok); width: 120px; height: 120px; flex: none; border-radius: 50%; display: grid; place-items: center;
+  background: conic-gradient(var(--c) calc(var(--p) * 1%), var(--surface-2) 0); }
+.score-ring > div { width: 96px; height: 96px; border-radius: 50%; background: var(--surface); display: grid; place-items: center; text-align: center; }
+.score-ring b { display: block; font: 700 2rem/1 var(--mono); }
+.score-ring span { font-size: .85rem; font-weight: 600; color: var(--c); }
+.score-ring[data-grade="Fair"] { --c: var(--warn); }
+.score-ring[data-grade="Poor"] { --c: var(--danger); }
+.health-meta h2 { margin-bottom: .35rem; }
+.chips { display: flex; gap: .4rem; flex-wrap: wrap; margin: .5rem 0; }
+.chip { font-size: .8rem; padding: .15rem .55rem; border-radius: 99px; border: 1px solid var(--border); }
+.chip.critical { color: var(--danger); border-color: var(--danger); }
+.chip.warn { color: var(--warn); border-color: var(--warn); }
+.chip.info { color: var(--info); border-color: var(--info); }
+.chip.ok { color: var(--ok); border-color: var(--ok); }
+.finding { display: grid; grid-template-columns: auto 1fr auto; gap: .15rem 1rem; align-items: baseline;
+  background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--muted);
+  border-radius: var(--radius); padding: .7rem 1rem; margin-bottom: .5rem; }
+.finding.critical { border-left-color: var(--danger); }
+.finding.warn { border-left-color: var(--warn); }
+.finding.info { border-left-color: var(--info); }
+.finding.ok { border-left-color: var(--ok); }
+.finding.skipped { opacity: .7; }
+.finding .sev { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); grid-row: span 2; min-width: 5.5em; }
+.finding.critical .sev { color: var(--danger); }
+.finding.warn .sev { color: var(--warn); }
+.finding.info .sev { color: var(--info); }
+.finding.ok .sev { color: var(--ok); }
+.finding .title { font-weight: 600; }
+.finding .area { color: var(--muted); font-weight: 400; font-size: .85rem; margin-left: .4rem; }
+.finding .fval { font-family: var(--mono); font-size: .85rem; text-align: right; grid-row: span 2; }
+.finding .detail { color: var(--muted); font-size: .9rem; }
+.disclaimer { color: var(--muted); font-size: .8rem; margin-top: 1rem; }
+
 @media (max-width: 720px) {
+  .health-intro { grid-template-columns: 1fr; }
+  .finding { grid-template-columns: 1fr; }
+  .finding .sev, .finding .fval { grid-row: auto; text-align: left; }
   .topbar { flex-wrap: wrap; gap: .5rem; }
   .tabs { order: 3; flex-basis: 100%; }
   .tabs button { padding: .4rem .55rem; font-size: .9rem; }

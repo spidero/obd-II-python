@@ -16,6 +16,7 @@ from rich.table import Table
 
 from . import __version__
 from .core import DEFAULT_DASHBOARD, ConnectionSettings, ObdError, ObdSession, find_ports
+from .core.simulator import FAULTS
 
 app = typer.Typer(
     help="OBD-II workshop tool: live data, reading and clearing trouble codes.",
@@ -61,6 +62,10 @@ def main(
                                            help="ELM327 protocol number, e.g. 6 = CAN 11/500 (default: auto)."),
     sim: bool = typer.Option(False, "--sim", envvar="OBD_SIM",
                              help="Use the built-in simulator instead of a real car."),
+    sim_fault: Optional[List[str]] = typer.Option(None, "--sim-fault", envvar="OBD_SIM_FAULTS",
+                                                  help="Inject a simulator fault (repeatable): "
+                                                       + ", ".join(FAULTS) + "."),
+    sim_no_codes: bool = typer.Option(False, "--sim-no-codes", help="Simulator starts without trouble codes."),
     slow: bool = typer.Option(False, "--slow", help="Disable python-OBD fast mode (for picky adapters)."),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show communication logs."),
     version: bool = typer.Option(False, "--version", callback=_version, is_eager=True, help="Show the version and exit."),
@@ -70,7 +75,13 @@ def main(
         import obd
 
         obd.logger.setLevel(logging.DEBUG)
-    ctx.obj = ConnectionSettings(port=port, baudrate=baud, protocol=protocol, fast=not slow, simulate=sim)
+    faults = tuple(f.strip() for item in (sim_fault or []) for f in item.split(",") if f.strip())
+    unknown = sorted(set(faults) - set(FAULTS))
+    if unknown:
+        err.print(f"[bold red]Error:[/] unknown simulator fault(s): {', '.join(unknown)}")
+        raise typer.Exit(2)
+    ctx.obj = ConnectionSettings(port=port, baudrate=baud, protocol=protocol, fast=not slow, simulate=sim,
+                                 sim_faults=faults, sim_codes=not sim_no_codes)
 
 
 @app.command()
@@ -261,6 +272,68 @@ def clear(
         _print_dtcs(after)
     else:
         console.print("[green]Trouble codes cleared.[/]")
+
+
+SEVERITY_STYLE = {
+    "critical": ("[bold white on red] CRITICAL [/]", "red"),
+    "warn": ("[bold black on yellow] WARNING [/]", "yellow"),
+    "info": ("[bold white on blue] INFO [/]", "blue"),
+    "ok": ("[bold black on green] OK [/]", "green"),
+    "skipped": ("[dim] SKIPPED [/]", "dim"),
+}
+
+
+@app.command()
+def health(
+    ctx: typer.Context,
+    duration: float = typer.Option(30.0, "--duration", "-d", min=3, help="Sampling time [s]."),
+    json_out: bool = typer.Option(False, "--json", help="Print the report as JSON."),
+    html: Optional[Path] = typer.Option(None, "--html", help="Save the report as an HTML file."),
+):
+    """Health check: sample live data and rate the car's condition (engine running and warm)."""
+    import json as jsonlib
+
+    from rich.progress import BarColumn, Progress, TextColumn, TimeRemainingColumn
+
+    from .core.health import run_check
+    from .core.report_html import render_html
+
+    try:
+        session = _open(ctx)
+    except ObdError as e:
+        _fail(e)
+    try:
+        with Progress(TextColumn("{task.description}"), BarColumn(), TimeRemainingColumn(),
+                      console=err, transient=True, disable=json_out) as bar:
+            task = bar.add_task("Starting", total=1.0)
+            report = run_check(session, duration,
+                               lambda f, msg: bar.update(task, completed=f, description=msg))
+    except ObdError as e:
+        _fail(e)
+    finally:
+        session.close()
+
+    if html:
+        html.write_text(render_html(report), encoding="utf-8")
+    if json_out:
+        console.print_json(jsonlib.dumps(report.to_dict()))
+        return
+
+    color = {"Good": "green", "Fair": "yellow", "Poor": "red"}[report.grade]
+    console.print(f"\n[bold]Vehicle health:[/] [bold {color}]{report.score}/100 – {report.grade}[/]")
+    t = Table(show_header=True, box=None, padding=(0, 1))
+    t.add_column("Result")
+    t.add_column("Area", style="dim")
+    t.add_column("Finding")
+    t.add_column("Value", justify="right")
+    for f in report.findings:
+        badge, style = SEVERITY_STYLE[f.severity]
+        text = f"[bold]{f.title}[/]" + (f"\n[dim]{f.detail}[/]" if f.detail else "")
+        t.add_row(badge, f.area, text, f"[{style}]{f.value}[/]")
+    console.print(t)
+    console.print(f"[dim]{report.disclaimer}[/]")
+    if html:
+        console.print(f"Saved: {html}")
 
 
 @app.command()

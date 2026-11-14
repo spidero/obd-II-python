@@ -5,6 +5,8 @@ ISO 15765-4 CAN 11 bit / 500 kbit with a single engine ECU at 7E8 - the same
 set-up as the test car. It answers AT commands, mode 01 (live data), 03/07
 (trouble codes), 04 (clear codes) and 09 02 (VIN).
 
+Faults can be injected to see what a bad health check looks like, see FAULTS.
+
 Linux/macOS only (uses os.openpty).
 """
 
@@ -21,15 +23,28 @@ import tty
 from . import dtc as dtc_codes
 
 ECU_RESPONSE_ID = "7E8"
+
+# Injectable faults: name -> description
+FAULTS = {
+    "lean": "mixture too lean (fuel trims about +22 %)",
+    "rich": "mixture too rich (fuel trims about -22 %)",
+    "charging": "alternator not charging (12.4 V)",
+    "overheat": "engine overheating (110 °C)",
+    "rough_idle": "unstable idle (misfire-like rpm swings)",
+    "lazy_o2": "slow upstream O2 sensor",
+    "catalyst": "worn catalyst (downstream O2 follows upstream)",
+    "cleared": "codes cleared recently (monitors incomplete)",
+}
 ELM_ID = "ELM327 v2.3"
 
 
 class EngineModel:
     """Very small time based model of a running engine (120 s drive cycle)."""
 
-    def __init__(self, seed: int | None = None):
-        self.start = time.monotonic()
+    def __init__(self, seed: int | None = None, offset: float = 0.0, faults: set[str] | None = None):
+        self.start = time.monotonic() - offset  # offset: seconds the engine has already been running
         self.rand = random.Random(seed)
+        self.faults = faults or set()
 
     def elapsed(self) -> float:
         return time.monotonic() - self.start
@@ -65,6 +80,8 @@ class EngineModel:
         speed = self.speed
         if speed < 1:
             base = 680 + 25 * math.sin(self.elapsed())
+            if "rough_idle" in self.faults:
+                base += self.noise(140)
         else:
             gear_ratio = 2600 / 50 if speed < 50 else 2300 / 80
             base = max(900, speed * gear_ratio)
@@ -72,6 +89,8 @@ class EngineModel:
 
     @property
     def coolant(self) -> float:
+        if "overheat" in self.faults:
+            return 110 + self.noise(0.5)
         return 90 - 65 * math.exp(-self.elapsed() / 180) + self.noise(0.3)
 
     @property
@@ -91,8 +110,12 @@ class Elm327Emulator:
     """Threaded ELM327 emulator bound to a pseudo terminal."""
 
     def __init__(self, stored_dtcs=("P0133", "P0420"), pending_dtcs=("P0171",),
-                 vin="SIM1234567890ABCD", seed: int | None = None):
-        self.engine = EngineModel(seed)
+                 vin="SIM1234567890ABCD", seed: int | None = None, faults=(), warm: bool = True):
+        unknown = set(faults) - set(FAULTS)
+        if unknown:
+            raise ValueError(f"Unknown simulator fault(s): {', '.join(sorted(unknown))}")
+        self.faults = set(faults)
+        self.engine = EngineModel(seed, offset=600 if warm else 0, faults=self.faults)
         self.stored_dtcs = list(stored_dtcs)
         self.pending_dtcs = list(pending_dtcs)
         self.vin = vin
@@ -100,6 +123,9 @@ class Elm327Emulator:
         self.distance_since_clear = 1234
         self.warmups_since_clear = 37
         self.cleared_at: float | None = None
+        if "cleared" in self.faults:
+            self.distance_since_clear, self.warmups_since_clear = 12, 2
+            self.cleared_at = time.monotonic() + 3600  # monitors stay incomplete
         self.commands_seen: list[str] = []
         self._reset()
         self._master, self._slave = os.openpty()
@@ -207,7 +233,7 @@ class Elm327Emulator:
         if arg == "@1":
             return ["OBDII to RS232 Interpreter (sim)"]
         if arg == "RV":
-            return [f"{14.1 + self.engine.noise(0.1):.1f}V"]
+            return [f"{self._voltage() + self.engine.noise(0.1):.1f}V"]
         if arg == "DP":
             return ["AUTO, ISO 15765-4 (CAN 11/500)"]
         if arg == "DPN":
@@ -286,7 +312,7 @@ class Elm327Emulator:
         d = 0x00  # all complete
         if self.cleared_at is not None:
             # after clearing, monitors become ready one by one (one every 20 s)
-            done = int((time.monotonic() - self.cleared_at) // 20)
+            done = max(0, int((time.monotonic() - self.cleared_at) // 20))
             pending = [bit for bit in (0x01, 0x20, 0x40, 0x80) if c & bit][done:]
             for bit in pending:
                 d |= bit
@@ -298,14 +324,22 @@ class Elm327Emulator:
         e = self.engine
         rpm = max(0, int(e.rpm * 4))
         trim_s = 128 + int(e.noise(4))
-        o2 = 0.45 + 0.4 * math.sin(e.elapsed() * 3)
+        trim_l = 131
+        if "lean" in self.faults:
+            trim_s, trim_l = trim_s + 15, 141
+        elif "rich" in self.faults:
+            trim_s, trim_l = trim_s - 15, 115
+        speed_o2 = 0.4 if "lazy_o2" in self.faults else 3
+        o2 = 0.45 + 0.4 * math.sin(e.elapsed() * speed_o2)
+        o2_down = 0.45 + 0.35 * math.sin(e.elapsed() * speed_o2 - 0.5) if "catalyst" in self.faults \
+            else 0.7 + e.noise(0.02)
         return {
             0x01: self._status_bytes(),
             0x03: bytes([0x02, 0x00]),
             0x04: bytes([int(e.load * 255 / 100) & 0xFF]),
             0x05: bytes([int(e.coolant + 40)]),
             0x06: bytes([trim_s]),
-            0x07: bytes([131]),
+            0x07: bytes([trim_l]),
             0x0B: bytes([int(e.map_kpa)]),
             0x0C: rpm.to_bytes(2, "big"),
             0x0D: bytes([int(e.speed)]),
@@ -315,7 +349,7 @@ class Elm327Emulator:
             0x11: bytes([int((12 + 70 * e.throttle) * 255 / 100)]),
             0x13: bytes([0x03]),
             0x14: bytes([int(o2 * 200), trim_s]),
-            0x15: bytes([int(0.7 * 200), 0xFF]),
+            0x15: bytes([int(o2_down * 200), 0xFF]),
             0x1C: bytes([0x06]),  # EOBD
             0x1F: int(e.elapsed()).to_bytes(2, "big"),
             0x21: self.distance_with_mil.to_bytes(2, "big"),
@@ -323,7 +357,7 @@ class Elm327Emulator:
             0x31: self.distance_since_clear.to_bytes(2, "big"),
             0x33: bytes([99]),
             0x3C: int((420 + 200 * e.throttle + 40) * 10).to_bytes(2, "big"),
-            0x42: int((14.1 + e.noise(0.05)) * 1000).to_bytes(2, "big"),
+            0x42: int((self._voltage() + e.noise(0.05)) * 1000).to_bytes(2, "big"),
             0x43: int(e.load * 255 / 100 * 0.9).to_bytes(2, "big"),
             0x44: int(1.0 * 32768).to_bytes(2, "big"),
             0x45: bytes([int(70 * e.throttle * 255 / 100)]),
@@ -333,6 +367,9 @@ class Elm327Emulator:
             0x4A: bytes([int((7 + 40 * e.throttle) * 255 / 100)]),
             0x4C: bytes([int((5 + 70 * e.throttle) * 255 / 100)]),
         }
+
+    def _voltage(self) -> float:
+        return 12.4 if "charging" in self.faults else 14.1
 
     def _mode01(self, pid: int) -> bytes | None:
         values = self._live_values()

@@ -12,12 +12,14 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .. import __version__
 from ..core import DEFAULT_DASHBOARD, ConnectionSettings, ObdError, ObdSession, find_ports
+from ..core.health import HealthReport, run_check
+from ..core.report_html import render_html
 
 log = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).parent / "static"
@@ -32,6 +34,8 @@ class AppState:
         self.state = "disconnected"  # disconnected | connecting | connected | error
         self.error: Optional[str] = None
         self._lock = threading.Lock()
+        self.last_report: Optional[HealthReport] = None
+        self.health_running = False
 
     def connect(self, settings: Optional[ConnectionSettings] = None) -> None:
         with self._lock:
@@ -166,6 +170,65 @@ def create_app(settings: Optional[ConnectionSettings] = None, connect: bool = Tr
             s.clear_dtcs()
             return s.read_dtcs().to_dict()
         return guarded(work)
+
+    @app.get("/api/health/last")
+    def get_health_last():
+        if state.last_report is None:
+            raise HTTPException(404, detail="No health check has been run yet")
+        return state.last_report.to_dict()
+
+    @app.get("/api/health/report.html", response_class=HTMLResponse)
+    def get_health_html(download: bool = False):
+        if state.last_report is None:
+            raise HTTPException(404, detail="No health check has been run yet")
+        headers = {}
+        if download:
+            stamp = state.last_report.created.replace(":", "-")
+            headers["Content-Disposition"] = f'attachment; filename="health-report-{stamp}.html"'
+        return HTMLResponse(render_html(state.last_report), headers=headers)
+
+    @app.websocket("/ws/health")
+    async def ws_health(ws: WebSocket):
+        """Client sends {"duration": 30}; server streams {"progress", "message"} and finally {"report"}."""
+        await ws.accept()
+        try:
+            msg = json.loads(await ws.receive_text())
+            duration = min(120.0, max(5.0, float(msg.get("duration", 30))))
+            if state.health_running:
+                await ws.send_json({"error": "A health check is already running"})
+                return
+            try:
+                session = state.check()
+            except HTTPException as e:
+                await ws.send_json({"error": e.detail})
+                return
+
+            loop = asyncio.get_running_loop()
+            queue: asyncio.Queue = asyncio.Queue()
+
+            def progress(fraction: float, message: str) -> None:
+                loop.call_soon_threadsafe(queue.put_nowait, {"progress": round(fraction, 3), "message": message})
+
+            async def forward():
+                while True:
+                    await ws.send_json(await queue.get())
+
+            state.health_running = True
+            forwarder = asyncio.create_task(forward())
+            try:
+                report = await asyncio.to_thread(run_check, session, duration, progress)
+            except ObdError as e:
+                await ws.send_json({"error": str(e)})
+                return
+            finally:
+                state.health_running = False
+                await asyncio.sleep(0)  # let queued progress messages go out first
+                forwarder.cancel()
+            state.last_report = report
+            await ws.send_json({"report": report.to_dict()})
+            await ws.close()
+        except (WebSocketDisconnect, RuntimeError):
+            pass
 
     @app.websocket("/ws/live")
     async def ws_live(ws: WebSocket):

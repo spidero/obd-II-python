@@ -36,6 +36,8 @@ class ConnectionSettings:
     fast: bool = True
     timeout: float = 1.0             # used for baud rate detection
     simulate: bool = False
+    sim_faults: tuple[str, ...] = ()  # see simulator.FAULTS
+    sim_codes: bool = True            # simulator starts with sample trouble codes
 
 
 def find_ports() -> list[str]:
@@ -90,7 +92,8 @@ class ObdSession:
             if s.simulate:
                 from .simulator import Elm327Emulator
 
-                self._emulator = Elm327Emulator().start()
+                kwargs = {} if s.sim_codes else {"stored_dtcs": (), "pending_dtcs": ()}
+                self._emulator = Elm327Emulator(faults=s.sim_faults, **kwargs).start()
                 port = self._emulator.port
             elif port is None:
                 ports = find_ports()
