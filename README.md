@@ -89,6 +89,15 @@ requires ticking a checkbox, and the API refuses requests without `"confirm": tr
 The web server has no authentication. Keep it on `127.0.0.1` (default) or a trusted
 network.
 
+### Run as a service (Raspberry/Orange Pi)
+
+`deploy/obd-tool-web.service` starts the web UI on boot, listening on all interfaces:
+
+```bash
+sudo cp deploy/obd-tool-web.service /etc/systemd/system/
+sudo systemctl enable --now obd-tool-web
+```
+
 ## Development
 
 ```bash
