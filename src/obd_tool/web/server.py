@@ -343,11 +343,11 @@ def create_app(settings: Optional[ConnectionSettings] = None, connect: bool = Tr
         return {"deleted": record_id}
 
     @app.get("/api/history/{record_id}/report.html", response_class=HTMLResponse)
-    def get_history_html(record_id: str):
+    def get_history_html(record_id: str, lang: str = "en"):
         record = stored(state.storage.record, state.vehicle["id"], record_id)
         if record.get("kind") != "health":
             raise HTTPException(404, detail="Not a health report")
-        return HTMLResponse(render_html(HealthReport.from_dict(record["data"])))
+        return HTMLResponse(render_html(HealthReport.from_dict(record["data"]), lang))
 
     @app.get("/api/about")
     def get_about():
@@ -362,14 +362,14 @@ def create_app(settings: Optional[ConnectionSettings] = None, connect: bool = Tr
         return state.last_report.to_dict()
 
     @app.get("/api/health/report.html", response_class=HTMLResponse)
-    def get_health_html(download: bool = False):
+    def get_health_html(download: bool = False, lang: str = "en"):
         if state.last_report is None:
             raise HTTPException(404, detail="No health check has been run yet")
         headers = {}
         if download:
             stamp = state.last_report.created.replace(":", "-")
             headers["Content-Disposition"] = f'attachment; filename="health-report-{stamp}.html"'
-        return HTMLResponse(render_html(state.last_report), headers=headers)
+        return HTMLResponse(render_html(state.last_report, lang), headers=headers)
 
     @app.websocket("/ws/health")
     async def ws_health(ws: WebSocket):

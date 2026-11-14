@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from html import escape
 
+from ..i18n import finding_text, normalize, tr
 from .health import HealthReport
 
 _COLORS = {"critical": "#d22f2f", "warn": "#b07a00", "info": "#2f6fd2", "ok": "#138a5b", "skipped": "#7a828c"}
@@ -18,53 +19,62 @@ def _num(value) -> str:
     return f"{value:g}" if isinstance(value, float) else str(value)
 
 
-def render_html(report: HealthReport) -> str:
+def render_html(report: HealthReport, lang: str = "en") -> str:
+    lang = normalize(lang)
+
+    def _(text: str, **params) -> str:
+        return tr(text, lang, **params)
+
     v = report.vehicle or {}
     rows = []
     for f in report.findings:
         color = _COLORS[f.severity]
+        x = finding_text(f.to_dict(), lang)
         rows.append(
-            f'<tr><td><span class="sev" style="background:{color}">{_LABELS[f.severity]}</span></td>'
-            f"<td>{escape(f.area)}</td><td><strong>{escape(f.title)}</strong>"
-            f'<div class="detail">{escape(f.detail)}</div></td>'
-            f'<td class="val">{escape(f.value)}</td></tr>'
+            f'<tr><td><span class="sev" style="background:{color}">{_(_LABELS[f.severity])}</span></td>'
+            f"<td>{escape(x['area'])}</td><td><strong>{escape(x['title'])}</strong>"
+            f'<div class="detail">{escape(x["detail"])}</div></td>'
+            f'<td class="val">{escape(x["value"])}</td></tr>'
         )
     meta = [
-        ("Date", report.created.replace("T", " ")),
-        ("VIN", v.get("vin") or "not reported"),
-        ("Protocol", v.get("protocol") or "?"),
-        ("Adapter", v.get("adapter") or "?"),
-        ("Check duration", f"{report.duration:.0f} s, {report.samples} samples"),
+        (_("Date"), report.created.replace("T", " ")),
+        ("VIN", v.get("vin") or _("not reported")),
+        (_("Protocol"), v.get("protocol") or "?"),
+        (_("Adapter"), v.get("adapter") or "?"),
+        (_("Check duration"), _("{seconds} s, {samples} samples", seconds=f"{report.duration:.0f}",
+                                samples=report.samples)),
     ]
     if v.get("simulated"):
-        meta.append(("Source", "simulator"))
+        meta.append((_("Source"), _("simulator")))
     meta_html = "".join(f"<dt>{escape(k)}</dt><dd>{escape(str(val))}</dd>" for k, val in meta)
     extra = ""
     ff = report.freeze_frame
     if ff and ff.get("dtc"):
         ff_rows = "".join(
-            f"<tr><td>{escape(str(r['label']))}</td><td class=\"val\">{escape(_num(r['value']))} "
+            f"<tr><td>{escape(_(str(r['label'])))}</td><td class=\"val\">{escape(_(_num(r['value'])))} "
             f"{escape(str(r['unit']))}</td></tr>" for r in ff["readings"])
-        extra += (f"<h2>Freeze frame — {escape(ff['dtc']['code'])}</h2>"
-                  f"<p class=\"detail\">{escape(ff['dtc']['description'] or '')} · engine conditions when the "
-                  f"fault was detected.</p><table><tbody>{ff_rows}</tbody></table>")
+        extra += (f"<h2>{escape(_('Freeze frame — {code}', code=ff['dtc']['code']))}</h2>"
+                  f"<p class=\"detail\">{escape(ff['dtc']['description'] or '')} · "
+                  f"{escape(_('engine conditions when the fault was detected.'))}</p>"
+                  f"<table><tbody>{ff_rows}</tbody></table>")
     if report.monitor_tests:
         mon_rows = "".join(
-            f'<tr><td><span class="sev" style="background:{_STATUS[t["status"]][1]}">{_STATUS[t["status"]][0]}</span></td>'
-            f"<td>{escape(t['monitor'])}</td><td>{escape(t['name'])}</td>"
+            f'<tr><td><span class="sev" style="background:{_STATUS[t["status"]][1]}">'
+            f'{escape(_(_STATUS[t["status"]][0]))}</span></td>'
+            f"<td>{escape(_(t['monitor']))}</td><td>{escape(_(t['name']))}</td>"
             f"<td class=\"val\">{escape(_num(t['value']))} {escape(t['unit'])}</td>"
             f"<td class=\"val\">{escape(_num(t['min']))}</td><td class=\"val\">{escape(_num(t['max']))}</td></tr>"
             for t in report.monitor_tests)
-        extra += ("<h2>On-board monitor tests (mode 06)</h2>"
-                  "<table><thead><tr><th>Result</th><th>Monitor</th><th>Test</th><th>Value</th><th>Min</th>"
-                  f"<th>Max</th></tr></thead><tbody>{mon_rows}</tbody></table>")
+        heads = "".join(f"<th>{escape(_(h))}</th>" for h in ("Result", "Monitor", "Test", "Value", "Min", "Max"))
+        extra += (f"<h2>{escape(_('On-board monitor tests (mode 06)'))}</h2>"
+                  f"<table><thead><tr>{heads}</tr></thead><tbody>{mon_rows}</tbody></table>")
     counts = report.counts
-    summary = " · ".join(f"{counts[k]} {_LABELS[k].lower()}" for k in ("critical", "warn", "info", "ok") if counts[k])
+    summary = " · ".join(_("{n} " + _LABELS[k].lower(), n=counts[k]) for k in ("critical", "warn", "info", "ok") if counts[k])
     grade_color = _GRADE.get(report.grade, "#333")
     return f"""<!doctype html>
-<html lang="en"><head><meta charset="utf-8">
+<html lang="{lang}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Vehicle health report</title>
+<title>{escape(_("Vehicle health report"))}</title>
 <style>
   body {{ font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #15191e; background: #fff;
          max-width: 900px; margin: 0 auto; padding: 24px 16px; }}
@@ -87,15 +97,15 @@ def render_html(report: HealthReport) -> str:
   @media (max-width: 600px) {{ .val {{ white-space: normal; }} }}
 </style></head>
 <body>
-<h1>Vehicle health report</h1>
+<h1>{escape(_("Vehicle health report"))}</h1>
 <div class="muted">{escape(summary)}</div>
 <div class="head">
-  <div class="score"><div><b>{report.score}</b><span>{escape(report.grade)}</span></div></div>
+  <div class="score"><div><b>{report.score}</b><span>{escape(_(report.grade))}</span></div></div>
   <dl>{meta_html}</dl>
 </div>
-<table><thead><tr><th>Result</th><th>Area</th><th>Finding</th><th>Value</th></tr></thead>
+<table><thead><tr><th>{escape(_("Result"))}</th><th>{escape(_("Area"))}</th><th>{escape(_("Finding"))}</th><th>{escape(_("Value"))}</th></tr></thead>
 <tbody>{''.join(rows)}</tbody></table>
 {extra}
-<p class="note">{escape(report.disclaimer)} Generated by OBD Tool.</p>
+<p class="note">{escape(_(report.disclaimer))} {escape(_("Generated by OBD Tool."))}</p>
 </body></html>
 """

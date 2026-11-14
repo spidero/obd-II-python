@@ -25,6 +25,7 @@
     <div class="conn-pill" id="conn-pill" data-state="disconnected" title="Connection state">
       <span class="dot"></span><span id="conn-text">Disconnected</span>
     </div>
+    <button class="icon-btn lang-btn" id="btn-lang" title="Language / Język" aria-label="Change language">EN</button>
     <button class="icon-btn" id="btn-about" title="About &amp; support" aria-label="About and support">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>
     </button>
@@ -36,7 +37,7 @@
       <div class="toolbar">
         <div class="toolbar-group">
           <button class="btn" id="btn-pause" aria-pressed="false">Pause</button>
-          <label class="field-inline">Refresh
+          <label class="field-inline">Interval
             <select id="sel-interval">
               <option value="0.25">0.25 s</option>
               <option value="0.5" selected>0.5 s</option>
@@ -92,7 +93,7 @@
         </div>
         <div class="toolbar-group"><button class="btn" id="btn-tests">Read test results</button></div>
       </div>
-      <p class="muted intro">The ECU tests the catalyst, O2 sensors, EGR and misfires by itself while you drive.
+      <p class="muted intro" data-i18n-html>The ECU tests the catalyst, O2 sensors, EGR and misfires by itself while you drive.
         These are its measured values against its own limits (OBD mode 06) — a test close to the limit shows a
         part wearing out <strong>before</strong> a trouble code appears.</p>
       <div id="tests-list"><p class="empty">Click “Read test results”.</p></div>
@@ -103,7 +104,7 @@
       <div class="card health-intro">
         <div>
           <h2>Vehicle health check</h2>
-          <p class="muted">Reads trouble codes and readiness monitors, samples live data and rates the car's
+          <p class="muted" data-i18n-html>Reads trouble codes and readiness monitors, samples live data and rates the car's
             condition: charging, cooling, fuel mixture, idle, O2 sensors and catalyst.
             For best results run it with the <strong>engine running, warm (&gt;70&nbsp;°C) and idling</strong>.</p>
         </div>
@@ -160,7 +161,7 @@
         </div>
         <div class="card">
           <h3>What is kept here</h3>
-          <p class="muted">Each vehicle has its own dashboard layout and history: health reports, the codes and
+          <p class="muted" data-i18n-html>Each vehicle has its own dashboard layout and history: health reports, the codes and
             freeze frame saved automatically <strong>before clearing</strong>, and saved trips.
             Tick two health reports to compare them, for example before and after a repair.</p>
           <p class="muted" id="hist-dir"></p>
@@ -355,7 +356,7 @@
   <dialog id="dlg-clear">
     <form method="dialog" class="dialog">
       <h3>Clear trouble codes?</h3>
-      <p>Clearing (mode 04) erases stored and pending codes and freeze frame data,
+      <p data-i18n-html>Clearing (mode 04) erases stored and pending codes and freeze frame data,
         and <strong>resets the readiness monitors</strong> and monitor test results. Until the monitors
         complete again (a few drive cycles) the car may fail an emissions inspection.</p>
       <p>If the fault is still present, the code will come back. The codes and the freeze frame are saved

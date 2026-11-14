@@ -8,6 +8,9 @@ freeze frame, on-board monitor tests (mode 06), readiness monitors, fuel consump
 - **Web UI** – `obd-tool web`, open it from a laptop or a phone
 - **Desktop GUI** – `obd-tool gui`, the same UI in a native window (pywebview)
 
+The web UI and the desktop GUI are available in **English and Polish** – switch with the `EN`/`PL`
+button in the top bar.
+
 A built-in **ELM327 simulator** (`--sim`) lets you run everything without a car.
 
 ![Dashboard](docs/screenshots/car-dashboard-dark.png)
@@ -154,6 +157,16 @@ VIN are recognised automatically; the simulator always uses its own “Simulator
 health reports to compare them, for example before and after a repair. Files are plain JSON in
 `~/.local/share/obd-tool` (override with `OBD_TOOL_DATA`).
 
+### Languages
+
+The `EN`/`PL` button in the top bar switches the web UI (and the printable health report) between
+English and Polish; the choice is remembered in the browser, and a Polish browser starts in Polish.
+English texts are the keys of one dictionary, `src/obd_tool/web/static/pl.json`, used by both the
+browser and the server (`obd_tool/i18n.py`). Health findings are stored as templates with parameters,
+so saved reports follow the current language. To add a language, copy `pl.json`, translate it and add
+its code to `LANGUAGES` in `i18n.py` and to the button in `app.js`. Not translated: the command line,
+the trouble code descriptions (they come from python-OBD's English database) and the API messages.
+
 ### Clearing trouble codes
 
 Clearing (mode 04) erases stored and pending codes and freeze frame data **and resets
@@ -227,6 +240,7 @@ src/obd_tool/
   core/health.py      health check: sampling + rules (pure evaluate())
   core/report_html.py printable HTML report
   about.py            project links, supported adapters
+  i18n.py             translations shared with the browser (web/static/pl.json)
   cli.py              Typer CLI
   web/server.py       FastAPI + WebSocket
   web/static/         UI (plain HTML/CSS/JS, no CDN – works offline)

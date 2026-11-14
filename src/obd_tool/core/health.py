@@ -63,6 +63,9 @@ class Finding:
     detail: str = ""
     value: str = ""
     penalty: int = 0
+    title_t: str = ""      # templates and parameters of title/detail, for showing them in another language
+    detail_t: str = ""
+    params: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -91,7 +94,7 @@ class HealthReport:
     @classmethod
     def from_dict(cls, data: dict) -> "HealthReport":
         """Rebuild a report saved with to_dict() (history records)."""
-        fields = ("key", "area", "severity", "title", "detail", "value", "penalty")
+        fields = ("key", "area", "severity", "title", "detail", "value", "penalty", "title_t", "detail_t", "params")
         findings = [Finding(**{k: f[k] for k in fields if k in f}) for f in data.get("findings", [])]
         return cls(score=data["score"], grade=data["grade"], findings=findings, created=data["created"],
                    duration=data.get("duration", 0.0), samples=data.get("samples", 0),
@@ -192,71 +195,88 @@ def _fmt(v: float, unit: str = "", decimals: int = 1) -> str:
 
 
 # --------------------------------------------------------------------------- rules
+# Every text is a template with {named} parameters, so the UI can show it in another
+# language (see obd_tool/i18n.py). Parameters are ready-made strings or lists of strings.
+def _render(template: str, params: dict) -> str:
+    shown = {k: ", ".join(v) if isinstance(v, list) else v for k, v in params.items()}
+    return template.format(**shown) if template else ""
+
+
+def F(key: str, area: str, severity: str, title: str, detail: str = "", shown: str = "", penalty: int = 0, /,
+      **params) -> Finding:
+    """Build a finding; `shown` is the value column, `params` fill the {placeholders}."""
+    return Finding(key, area, severity, _render(title, params), _render(detail, params), shown, penalty,
+                   title_t=title, detail_t=detail, params=params)
+
+
+NO_DESCRIPTION = "Manufacturer specific code"
+
+
 def _rule_dtcs(s: Snapshot) -> list[Finding]:
     out = []
     stored, pending = s.dtcs.stored, s.dtcs.pending
     if s.status.mil:
-        out.append(Finding("mil", "Trouble codes", "critical", "Check engine light (MIL) is on",
-                           "The ECU has confirmed an emissions related fault.", "ON", 10))
+        out.append(F("mil", "Trouble codes", "critical", "Check engine light (MIL) is on",
+                     "The ECU has confirmed an emissions related fault.", "ON", 10))
     for d in stored:
-        out.append(Finding(f"dtc_{d.code}", "Trouble codes", "critical", f"Stored code {d.code}",
-                           d.description or "Manufacturer specific code", d.system, 15))
+        out.append(F(f"dtc_{d.code}", "Trouble codes", "critical", "Stored code {code}", "{description}",
+                     d.system, 15, code=d.code, description=d.description or NO_DESCRIPTION))
     for d in pending:
-        out.append(Finding(f"dtc_{d.code}", "Trouble codes", "warn", f"Pending code {d.code}",
-                           (d.description or "Manufacturer specific code")
-                           + " — detected once, not confirmed yet.", d.system, 5))
+        out.append(F(f"dtc_{d.code}", "Trouble codes", "warn", "Pending code {code}",
+                     "{description} — detected once, not confirmed yet.", d.system, 5,
+                     code=d.code, description=d.description or NO_DESCRIPTION))
     stored_codes = {d.code for d in stored}
     for d in s.dtcs.permanent:
         if d.code in stored_codes:
             continue  # already reported as a stored code
-        out.append(Finding(f"permanent_{d.code}", "Trouble codes", "warn", f"Permanent code {d.code}",
-                           (d.description or "Manufacturer specific code")
-                           + " — the codes were cleared, but the ECU has not yet confirmed that this fault "
-                           "is gone. It disappears by itself after the monitor passes.", d.system, 5))
+        out.append(F(f"permanent_{d.code}", "Trouble codes", "warn", "Permanent code {code}",
+                     "{description} — the codes were cleared, but the ECU has not yet confirmed that this fault "
+                     "is gone. It disappears by itself after the monitor passes.", d.system, 5,
+                     code=d.code, description=d.description or NO_DESCRIPTION))
     if not stored and not pending and not s.status.mil:
-        out.append(Finding("dtc", "Trouble codes", "ok", "No trouble codes",
-                           "No stored or pending codes, MIL off."))
+        out.append(F("dtc", "Trouble codes", "ok", "No trouble codes", "No stored or pending codes, MIL off."))
     if s.freeze is not None and s.freeze.present:
         shown = {r.key: r for r in s.freeze.readings}
         parts = [f"{shown[k].value:g} {shown[k].unit}" for k in ("RPM", "SPEED", "COOLANT_TEMP", "ENGINE_LOAD")
                  if k in shown and isinstance(shown[k].value, (int, float))]
-        out.append(Finding("freeze_frame", "Trouble codes", "info", f"Freeze frame stored for {s.freeze.dtc.code}",
-                           "Engine conditions when the fault was detected"
-                           + (": " + ", ".join(parts) if parts else "") + ". See the freeze frame table.",
-                           s.freeze.dtc.code))
+        detail = ("Engine conditions when the fault was detected: {conditions}. See the freeze frame table."
+                  if parts else "Engine conditions when the fault was detected. See the freeze frame table.")
+        out.append(F("freeze_frame", "Trouble codes", "info", "Freeze frame stored for {code}", detail,
+                     s.freeze.dtc.code, code=s.freeze.dtc.code, conditions=", ".join(parts)))
     dist_mil = s.counters.get("DISTANCE_W_MIL")
     if dist_mil:
-        out.append(Finding("distance_mil", "Trouble codes", "warn" if dist_mil > 100 else "info",
-                           "Distance driven with MIL on", "The car was driven with the check engine light on.",
-                           _fmt(dist_mil, "km", 0), 5 if dist_mil > 100 else 0))
+        out.append(F("distance_mil", "Trouble codes", "warn" if dist_mil > 100 else "info",
+                     "Distance driven with MIL on", "The car was driven with the check engine light on.",
+                     _fmt(dist_mil, "km", 0), 5 if dist_mil > 100 else 0))
     return out
 
 
 def _rule_readiness(s: Snapshot) -> list[Finding]:
     tests = s.status.readiness
     if not tests:
-        return [Finding("readiness", "Readiness", "skipped", "Readiness monitors not reported")]
+        return [F("readiness", "Readiness", "skipped", "Readiness monitors not reported")]
     incomplete = [t.label for t in tests if not t.complete]
     if not incomplete:
-        return [Finding("readiness", "Readiness", "ok", "All readiness monitors complete",
-                        f"{len(tests)} monitors complete.", f"{len(tests)}/{len(tests)}")]
+        return [F("readiness", "Readiness", "ok", "All readiness monitors complete",
+                  "{n} monitors complete.", f"{len(tests)}/{len(tests)}", n=str(len(tests)))]
     since_km = s.counters.get("DISTANCE_SINCE_DTC_CLEAR")
     warmups = s.counters.get("WARMUPS_SINCE_DTC_CLEAR")
     value = f"{len(tests) - len(incomplete)}/{len(tests)}"
     recently = (since_km is not None and since_km < 100) or (warmups is not None and warmups < 10)
     if recently:
-        extra = []
-        if since_km is not None:
-            extra.append(f"{since_km:.0f} km")
-        if warmups is not None:
-            extra.append(f"{warmups:.0f} warm-ups")
-        return [Finding("readiness", "Readiness", "warn", "Trouble codes were cleared recently",
-                        f"Incomplete monitors: {', '.join(incomplete)}. Only {' and '.join(extra)} since the "
-                        "codes were cleared (or the battery was disconnected). Faults may be hidden — "
-                        "when buying a used car, ask why.", value, 10)]
-    return [Finding("readiness", "Readiness", "info", "Some readiness monitors are incomplete",
-                    f"Incomplete: {', '.join(incomplete)}. Some cars never complete certain monitors "
-                    "in normal driving.", value, 3)]
+        tail = (" since the codes were cleared (or the battery was disconnected). Faults may be hidden — "
+                "when buying a used car, ask why.")
+        if since_km is not None and warmups is not None:
+            detail = "Incomplete monitors: {monitors}. Only {km} km and {warmups} warm-ups" + tail
+        elif since_km is not None:
+            detail = "Incomplete monitors: {monitors}. Only {km} km" + tail
+        else:
+            detail = "Incomplete monitors: {monitors}. Only {warmups} warm-ups" + tail
+        return [F("readiness", "Readiness", "warn", "Trouble codes were cleared recently", detail, value, 10,
+                  monitors=incomplete, km=f"{since_km or 0:.0f}", warmups=f"{warmups or 0:.0f}")]
+    return [F("readiness", "Readiness", "info", "Some readiness monitors are incomplete",
+              "Incomplete: {monitors}. Some cars never complete certain monitors in normal driving.",
+              value, 3, monitors=incomplete)]
 
 
 def _running(s: Snapshot) -> bool:
@@ -277,60 +297,66 @@ def _rule_charging(s: Snapshot) -> list[Finding]:
     if not volts and s.adapter_voltage:
         volts, source = [s.adapter_voltage], "adapter (OBD socket)"
     if not volts:
-        return [Finding("charging", "Electrical", "skipped", "Voltage not available")]
+        return [F("charging", "Electrical", "skipped", "Voltage not available")]
     v = statistics.median(volts)
     value = _fmt(v, "V", 2)
+    p = {"value": value, "source": source}
     if _running(s):
         if v < 13.0:
-            return [Finding("charging", "Electrical", "critical", "Battery is not being charged",
-                            f"{source} voltage {value} with the engine running. Check the alternator, "
-                            "its belt and wiring.", value, 20)]
+            return [F("charging", "Electrical", "critical", "Battery is not being charged",
+                      "{source} voltage {value} with the engine running. Check the alternator, "
+                      "its belt and wiring.", value, 20, **p)]
         if v < 13.4:
-            return [Finding("charging", "Electrical", "warn", "Low charging voltage",
-                            f"{value} with the engine running (expected 13.4–14.8 V). The alternator may be weak "
-                            "or many consumers are on.", value, 8)]
+            return [F("charging", "Electrical", "warn", "Low charging voltage",
+                      "{value} with the engine running (expected 13.4–14.8 V). The alternator may be weak "
+                      "or many consumers are on.", value, 8, **p)]
         if v > 15.2:
-            return [Finding("charging", "Electrical", "critical", "Overcharging",
-                            f"{value} with the engine running. Faulty voltage regulator can damage the battery "
-                            "and electronics.", value, 20)]
+            return [F("charging", "Electrical", "critical", "Overcharging",
+                      "{value} with the engine running. Faulty voltage regulator can damage the battery "
+                      "and electronics.", value, 20, **p)]
         if v > 14.8:
-            return [Finding("charging", "Electrical", "warn", "Charging voltage is high",
-                            f"{value} (expected 13.4–14.8 V). Normal for some smart alternators in a cold "
-                            "battery phase; otherwise check the regulator.", value, 5)]
-        return [Finding("charging", "Electrical", "ok", "Charging system OK",
-                        f"{value} with the engine running.", value)]
+            return [F("charging", "Electrical", "warn", "Charging voltage is high",
+                      "{value} (expected 13.4–14.8 V). Normal for some smart alternators in a cold "
+                      "battery phase; otherwise check the regulator.", value, 5, **p)]
+        return [F("charging", "Electrical", "ok", "Charging system OK",
+                  "{value} with the engine running.", value, **p)]
     # engine off: resting battery voltage
     if v < 11.8:
-        return [Finding("battery", "Electrical", "critical", "Battery is discharged",
-                        f"{value} with the engine off.", value, 15)]
+        return [F("battery", "Electrical", "critical", "Battery is discharged",
+                  "{value} with the engine off.", value, 15, **p)]
     if v < 12.3:
-        return [Finding("battery", "Electrical", "warn", "Battery is low", f"{value} with the engine off "
-                        "(a charged battery rests at about 12.6 V).", value, 5)]
-    return [Finding("battery", "Electrical", "ok", "Battery voltage OK", f"{value} with the engine off.", value)]
+        return [F("battery", "Electrical", "warn", "Battery is low", "{value} with the engine off "
+                  "(a charged battery rests at about 12.6 V).", value, 5, **p)]
+    return [F("battery", "Electrical", "ok", "Battery voltage OK", "{value} with the engine off.", value, **p)]
 
 
 def _rule_cooling(s: Snapshot) -> list[Finding]:
     coolant = s.values("COOLANT_TEMP")
     if not coolant:
-        return [Finding("cooling", "Cooling", "skipped", "Coolant temperature not available")]
+        return [F("cooling", "Cooling", "skipped", "Coolant temperature not available")]
     hi = max(coolant)
     value = _fmt(hi, "°C", 0)
     if hi > 108:
-        return [Finding("cooling", "Cooling", "critical", "Engine is overheating",
-                        f"Coolant reached {value}. Check coolant level, fan, thermostat and water pump.", value, 25)]
+        return [F("cooling", "Cooling", "critical", "Engine is overheating",
+                  "Coolant reached {value}. Check coolant level, fan, thermostat and water pump.", value, 25,
+                  value=value)]
     if hi > 104:
-        return [Finding("cooling", "Cooling", "warn", "Coolant temperature is high",
-                        f"{value} (normal is about 85–100 °C).", value, 8)]
+        return [F("cooling", "Cooling", "warn", "Coolant temperature is high",
+                  "{value} (normal is about 85–100 °C).", value, 8, value=value)]
     run_time = s.counters.get("RUN_TIME")
     if hi < 75 and run_time is not None and run_time > 900 and _running(s):
-        return [Finding("cooling", "Cooling", "warn", "Engine does not reach operating temperature",
-                        f"Only {value} after {run_time / 60:.0f} min of running. The thermostat may be stuck open.",
-                        value, 8)]
+        return [F("cooling", "Cooling", "warn", "Engine does not reach operating temperature",
+                  "Only {value} after {minutes} min of running. The thermostat may be stuck open.",
+                  value, 8, value=value, minutes=f"{run_time / 60:.0f}")]
     if hi < 70:
-        return [Finding("cooling", "Cooling", "skipped", "Engine is not warm yet",
-                        f"Coolant {value}. Warm the engine up (>70 °C) for the fuel trim and O2 sensor checks.",
-                        value)]
-    return [Finding("cooling", "Cooling", "ok", "Coolant temperature OK", f"{value}.", value)]
+        return [F("cooling", "Cooling", "skipped", "Engine is not warm yet",
+                  "Coolant {value}. Warm the engine up (>70 °C) for the fuel trim and O2 sensor checks.",
+                  value, value=value)]
+    return [F("cooling", "Cooling", "ok", "Coolant temperature OK", "{value}.", value, value=value)]
+
+
+_LEAN_HINT = "Typical causes: vacuum/intake leak, weak fuel pump or clogged filter, dirty MAF sensor."
+_RICH_HINT = "Typical causes: leaking injectors, high fuel pressure, faulty purge valve, oil in the intake."
 
 
 def _rule_fuel_trims(s: Snapshot) -> list[Finding]:
@@ -341,26 +367,29 @@ def _rule_fuel_trims(s: Snapshot) -> list[Finding]:
             continue
         key = f"fuel_trim_b{bank}"
         if not _running(s) or not _warm(s):
-            out.append(Finding(key, "Fuel mixture", "skipped", f"Fuel trims bank {bank} not evaluated",
-                               "Needs a running, warm engine."))
+            out.append(F(key, "Fuel mixture", "skipped", "Fuel trims bank {bank} not evaluated",
+                         "Needs a running, warm engine.", bank=bank))
             continue
         st = round(statistics.mean(stft), 1) + 0.0 if stft else 0.0  # + 0.0 turns -0.0 into 0.0
         lt = round(statistics.mean(ltft), 1) + 0.0 if ltft else 0.0
         total = round(st + lt, 1) + 0.0
         value = f"{total:+.1f} % (ST {st:+.1f}, LT {lt:+.1f})"
-        side = "lean (ECU adds fuel)" if total > 0 else "rich (ECU removes fuel)"
-        hint = ("Typical causes: vacuum/intake leak, weak fuel pump or clogged filter, dirty MAF sensor."
-                if total > 0 else
-                "Typical causes: leaking injectors, high fuel pressure, faulty purge valve, oil in the intake.")
+        p = {"bank": bank, "total": f"{total:+.1f}"}
+        lean = total > 0
         if abs(total) > 20:
-            out.append(Finding(key, "Fuel mixture", "critical", f"Mixture far too {side.split()[0]} (bank {bank})",
-                               f"Total fuel trim {total:+.1f} %: the engine runs {side}. {hint}", value, 20))
+            out.append(F(key, "Fuel mixture", "critical",
+                         "Mixture far too lean (bank {bank})" if lean else "Mixture far too rich (bank {bank})",
+                         ("Total fuel trim {total} %: the engine runs lean (ECU adds fuel). " + _LEAN_HINT) if lean
+                         else ("Total fuel trim {total} %: the engine runs rich (ECU removes fuel). " + _RICH_HINT),
+                         value, 20, **p))
         elif abs(total) > 10:
-            out.append(Finding(key, "Fuel mixture", "warn", f"Mixture is {side.split()[0]} (bank {bank})",
-                               f"Total fuel trim {total:+.1f} % (normal within ±10 %). {hint}", value, 8))
+            out.append(F(key, "Fuel mixture", "warn",
+                         "Mixture is lean (bank {bank})" if lean else "Mixture is rich (bank {bank})",
+                         "Total fuel trim {total} % (normal within ±10 %). " + (_LEAN_HINT if lean else _RICH_HINT),
+                         value, 8, **p))
         else:
-            out.append(Finding(key, "Fuel mixture", "ok", f"Fuel trims bank {bank} OK",
-                               f"Total fuel trim {total:+.1f} % (within ±10 %).", value))
+            out.append(F(key, "Fuel mixture", "ok", "Fuel trims bank {bank} OK",
+                         "Total fuel trim {total} % (within ±10 %).", value, **p))
     return out
 
 
@@ -378,39 +407,40 @@ def _idle_values(s: Snapshot, key: str) -> list[float]:
 
 def _rule_idle(s: Snapshot) -> list[Finding]:
     if not _running(s):
-        return [Finding("idle", "Idle", "skipped", "Engine is not running", "Start the engine for the idle checks.")]
+        return [F("idle", "Idle", "skipped", "Engine is not running", "Start the engine for the idle checks.")]
     rpm = _idle_values(s, "RPM")
     if len(rpm) < 5:
-        return [Finding("idle", "Idle", "skipped", "Idle not evaluated", "The car was moving during the check.")]
+        return [F("idle", "Idle", "skipped", "Idle not evaluated", "The car was moving during the check.")]
     out = []
     mean = statistics.mean(rpm)
     sd = statistics.pstdev(rpm)
     cv = sd / mean * 100 if mean else 0
     value = f"{mean:.0f} rpm ± {sd:.0f}"
     if cv > 10:
-        out.append(Finding("idle_stability", "Idle", "critical", "Very rough idle",
-                           f"Engine speed varies by ±{cv:.0f} %. Possible misfires, vacuum leak or dirty throttle body.",
-                           value, 15))
+        out.append(F("idle_stability", "Idle", "critical", "Very rough idle",
+                     "Engine speed varies by ±{cv} %. Possible misfires, vacuum leak or dirty throttle body.",
+                     value, 15, cv=f"{cv:.0f}"))
     elif cv > 5:
-        out.append(Finding("idle_stability", "Idle", "warn", "Unstable idle",
-                           f"Engine speed varies by ±{cv:.0f} % (normal below 5 %).", value, 6))
+        out.append(F("idle_stability", "Idle", "warn", "Unstable idle",
+                     "Engine speed varies by ±{cv} % (normal below 5 %).", value, 6, cv=f"{cv:.0f}"))
     else:
-        out.append(Finding("idle_stability", "Idle", "ok", "Stable idle", f"Variation ±{cv:.1f} %.", value))
+        out.append(F("idle_stability", "Idle", "ok", "Stable idle", "Variation ±{cv} %.", value, cv=f"{cv:.1f}"))
     if _warm(s) and mean > 1100:
-        out.append(Finding("idle_speed", "Idle", "info", "High idle speed",
-                           f"{mean:.0f} rpm with a warm engine. Check for air leaks or idle control issues "
-                           "(A/C or electrical load can raise idle).", f"{mean:.0f} rpm", 2))
+        out.append(F("idle_speed", "Idle", "info", "High idle speed",
+                     "{rpm} rpm with a warm engine. Check for air leaks or idle control issues "
+                     "(A/C or electrical load can raise idle).", f"{mean:.0f} rpm", 2, rpm=f"{mean:.0f}"))
 
     map_kpa = _idle_values(s, "INTAKE_PRESSURE")
     if map_kpa and _warm(s):
         m = statistics.median(map_kpa)
         mv = _fmt(m, "kPa", 0)
         if m > 50:
-            out.append(Finding("idle_map", "Idle", "warn", "Low intake vacuum at idle",
-                               f"Manifold pressure {mv} at idle (typical 25–45 kPa). Possible vacuum leak, "
-                               "valve timing or compression problem.", mv, 8))
+            out.append(F("idle_map", "Idle", "warn", "Low intake vacuum at idle",
+                         "Manifold pressure {value} at idle (typical 25–45 kPa). Possible vacuum leak, "
+                         "valve timing or compression problem.", mv, 8, value=mv))
         else:
-            out.append(Finding("idle_map", "Idle", "ok", "Intake vacuum at idle OK", f"Manifold pressure {mv}.", mv))
+            out.append(F("idle_map", "Idle", "ok", "Intake vacuum at idle OK", "Manifold pressure {value}.", mv,
+                         value=mv))
     return out
 
 
@@ -419,8 +449,8 @@ def _rule_o2(s: Snapshot) -> list[Finding]:
     if not up:
         return []
     if not _running(s) or not _warm(s):
-        return [Finding("o2_upstream", "O2 sensors", "skipped", "O2 sensors not evaluated",
-                        "Needs a running, warm engine.")]
+        return [F("o2_upstream", "O2 sensors", "skipped", "O2 sensors not evaluated",
+                  "Needs a running, warm engine.")]
     out = []
     up_v = [v for _, v in up]
     up_span = (up[-1][0] - up[0][0]) or 1.0
@@ -428,19 +458,20 @@ def _rule_o2(s: Snapshot) -> list[Finding]:
     up_hz = up_x / 2 / up_span  # two crossings per rich/lean cycle
     amplitude = max(up_v) - min(up_v)
     value = f"{up_hz:.2f} Hz, {min(up_v):.2f}–{max(up_v):.2f} V"
+    p = {"hz": f"{up_hz:.2f}", "lo": f"{min(up_v):.2f}", "hi": f"{max(up_v):.2f}"}
     if amplitude < 0.3:
         mean = statistics.mean(up_v)
-        state = "lean" if mean < 0.45 else "rich"
-        out.append(Finding("o2_upstream", "O2 sensors", "warn", "Upstream O2 sensor is not switching",
-                           f"Stuck {state} around {mean:.2f} V. The sensor may be worn out, or the mixture is "
-                           "far off (see fuel trims).", value, 10))
+        out.append(F("o2_upstream", "O2 sensors", "warn", "Upstream O2 sensor is not switching",
+                     ("Stuck lean around {mean} V. " if mean < 0.45 else "Stuck rich around {mean} V. ")
+                     + "The sensor may be worn out, or the mixture is far off (see fuel trims).",
+                     value, 10, mean=f"{mean:.2f}"))
     elif up_hz < 0.15:
-        out.append(Finding("o2_upstream", "O2 sensors", "warn", "Upstream O2 sensor is slow",
-                           f"Only {up_hz:.2f} rich/lean cycles per second (a healthy sensor at idle switches "
-                           "roughly every 1–3 s or faster). An aging sensor slows down fuel control.", value, 6))
+        out.append(F("o2_upstream", "O2 sensors", "warn", "Upstream O2 sensor is slow",
+                     "Only {hz} rich/lean cycles per second (a healthy sensor at idle switches "
+                     "roughly every 1–3 s or faster). An aging sensor slows down fuel control.", value, 6, **p))
     else:
-        out.append(Finding("o2_upstream", "O2 sensors", "ok", "Upstream O2 sensor is switching",
-                           f"{up_hz:.2f} cycles/s between {min(up_v):.2f} and {max(up_v):.2f} V.", value))
+        out.append(F("o2_upstream", "O2 sensors", "ok", "Upstream O2 sensor is switching",
+                     "{hz} cycles/s between {lo} and {hi} V.", value, **p))
 
     down = [v for _, v in s.samples.get("O2_B1S2", [])]
     if down and amplitude >= 0.3:
@@ -449,23 +480,24 @@ def _rule_o2(s: Snapshot) -> list[Finding]:
         ratio = down_x / up_x if up_x else 0.0
         dvalue = f"{min(down):.2f}–{max(down):.2f} V, switch ratio {ratio:.2f}"
         if down_amp > 0.5 and ratio > 0.6:
-            out.append(Finding("catalyst", "Catalyst", "warn", "Catalyst efficiency may be low",
-                               "The downstream O2 sensor follows the upstream one, so the catalyst stores little "
-                               "oxygen. Confirm with a warm engine at 2500 rpm; often precedes code P0420.",
-                               dvalue, 10))
+            out.append(F("catalyst", "Catalyst", "warn", "Catalyst efficiency may be low",
+                         "The downstream O2 sensor follows the upstream one, so the catalyst stores little "
+                         "oxygen. Confirm with a warm engine at 2500 rpm; often precedes code P0420.",
+                         dvalue, 10))
         else:
-            out.append(Finding("catalyst", "Catalyst", "ok", "Catalyst looks OK",
-                               "The downstream O2 sensor is steady while the upstream one switches.", dvalue))
+            out.append(F("catalyst", "Catalyst", "ok", "Catalyst looks OK",
+                         "The downstream O2 sensor is steady while the upstream one switches.", dvalue))
     return out
 
 
 def _limits(t) -> str:
+    unit = f" {t.unit}" if t.unit else ""
     if t.min is not None and t.max is not None:
-        return f"allowed {t.min:g}–{t.max:g}"
+        return f"allowed {t.min:g}–{t.max:g}{unit}"
     if t.max is not None:
-        return f"limit {t.max:g}"
+        return f"limit {t.max:g}{unit}"
     if t.min is not None:
-        return f"minimum {t.min:g}"
+        return f"minimum {t.min:g}{unit}"
     return "no limit"
 
 
@@ -474,29 +506,30 @@ def _rule_monitors(s: Snapshot) -> list[Finding]:
     if s.monitors is None:
         return []
     if not s.monitors.supported or not s.monitors.tests:
-        return [Finding("monitor_tests", "Monitor tests", "skipped", "Monitor test results not available",
-                        "The car does not report on-board test results (mode 06), or no test has run "
-                        "since the codes were cleared.")]
+        return [F("monitor_tests", "Monitor tests", "skipped", "Monitor test results not available",
+                  "The car does not report on-board test results (mode 06), or no test has run "
+                  "since the codes were cleared.")]
     out = []
-    unit = lambda t: f" {t.unit}" if t.unit else ""  # noqa: E731
     for t in s.monitors.tests:
-        value = f"{t.value:g}{unit(t)}"
+        value = f"{t.value:g}" + (f" {t.unit}" if t.unit else "")
+        p = {"monitor": t.monitor, "test": t.name, "value": value, "limits": _limits(t)}
         if t.status == "fail":
-            out.append(Finding(f"monitor_{t.id}", "Monitor tests", "critical", f"{t.monitor}: test failed",
-                               f"{t.name}: {value} ({_limits(t)}{unit(t)}). The ECU's own test is outside its "
-                               "limit; a trouble code follows if it fails again.", value, 10))
+            out.append(F(f"monitor_{t.id}", "Monitor tests", "critical", "{monitor}: test failed",
+                         "{test}: {value} ({limits}). The ECU's own test is outside its "
+                         "limit; a trouble code follows if it fails again.", value, 10, **p))
         elif t.status == "near":
-            out.append(Finding(f"monitor_{t.id}", "Monitor tests", "warn", f"{t.monitor}: close to the limit",
-                               f"{t.name}: {value} ({_limits(t)}{unit(t)}), only {t.margin:.0f} % headroom left. "
-                               "No trouble code yet, but the component is wearing out.", value, 5))
+            out.append(F(f"monitor_{t.id}", "Monitor tests", "warn", "{monitor}: close to the limit",
+                         "{test}: {value} ({limits}), only {margin} % headroom left. "
+                         "No trouble code yet, but the component is wearing out.", value, 5,
+                         margin=f"{t.margin:.0f}", **p))
         elif t.mid in MISFIRE_MIDS and t.value > 0 and t.mid != 0xA1:
-            out.append(Finding(f"monitor_{t.id}", "Monitor tests", "warn", f"{t.monitor}: misfires counted",
-                               f"{t.name}: {t.value:g}. Check the spark plug, coil and injector of this cylinder.",
-                               f"{t.value:g}", 5))
+            out.append(F(f"monitor_{t.id}", "Monitor tests", "warn", "{monitor}: misfires counted",
+                         "{test}: {value}. Check the spark plug, coil and injector of this cylinder.",
+                         f"{t.value:g}", 5, **p))
     if not out:
         n = len(s.monitors.tests)
-        out.append(Finding("monitor_tests", "Monitor tests", "ok", "On-board monitor tests passed",
-                           f"{n} test results are within the ECU's limits with headroom.", f"{n}/{n}"))
+        out.append(F("monitor_tests", "Monitor tests", "ok", "On-board monitor tests passed",
+                     "{n} test results are within the ECU's limits with headroom.", f"{n}/{n}", n=str(n)))
     return out
 
 

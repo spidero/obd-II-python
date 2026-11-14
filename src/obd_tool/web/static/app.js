@@ -15,6 +15,91 @@ const store = {
   },
 };
 
+// ---------------------------------------------------------------- language
+// English texts are the keys. pl.json holds {strings: {english: polish}, patterns: [[regex, replacement]],
+// words: {english: polish}}; the same file is used by the server for the printable report.
+const i18n = {
+  lang: store.get("lang", (navigator.language || "en").toLowerCase().startsWith("pl") ? "pl" : "en"),
+  strings: {}, patterns: [], words: null,
+};
+
+function t(text, params) {
+  if (typeof text !== "string" || !text) return text;
+  let out = i18n.strings[text];
+  if (out === undefined) {
+    out = text;
+    for (const [re, to] of i18n.patterns) {
+      if (re.test(text)) { out = text.replace(re, (...m) => to.replace(/\$(\d)/g, (_, n) => t(m[Number(n)]))); break; }
+    }
+  }
+  if (params) out = out.replace(/\{(\w+)\}/g, (m, k) => (k in params ? params[k] : m));
+  return out;
+}
+
+// Replace whole words of a short English summary (history list).
+function tWords(text) {
+  if (!i18n.words || typeof text !== "string") return text;
+  return text.replace(i18n.words.re, m => i18n.words.map[m]);
+}
+
+// A health finding in the current language (built from its template and parameters when it has them).
+function findingText(f) {
+  const fill = tpl => {
+    if (!tpl) return "";
+    const params = {};
+    for (const [k, v] of Object.entries(f.params || {})) params[k] = Array.isArray(v) ? v.map(x => t(x)).join(", ") : t(v);
+    return t(tpl, params);
+  };
+  return {
+    title: f.title_t ? fill(f.title_t) : t(f.title),
+    detail: f.title_t ? fill(f.detail_t) : t(f.detail || ""),
+    area: t(f.area), value: t(f.value || ""),
+  };
+}
+
+const I18N_ATTRS = ["title", "placeholder", "aria-label"];
+function translateStatic() {
+  document.documentElement.lang = i18n.lang;
+  for (const node of $$("[data-i18n-html]")) {
+    const key = node.innerHTML.replace(/\s+/g, " ").trim();
+    if (i18n.strings[key] !== undefined) node.innerHTML = i18n.strings[key];
+  }
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  for (const node of nodes) {
+    const parent = node.parentElement;
+    if (!parent || parent.closest("script, style, [data-i18n-html]")) continue;
+    const key = node.nodeValue.replace(/\s+/g, " ").trim();
+    if (!key || i18n.strings[key] === undefined) continue;
+    node.nodeValue = node.nodeValue.replace(node.nodeValue.trim(), i18n.strings[key]);
+  }
+  for (const attr of I18N_ATTRS) {
+    for (const node of $$(`[${attr}]`)) node.setAttribute(attr, t(node.getAttribute(attr)));
+  }
+}
+
+async function initLanguage() {
+  const btn = $("#btn-lang");
+  btn.textContent = i18n.lang.toUpperCase();
+  btn.addEventListener("click", () => {
+    store.set("lang", i18n.lang === "pl" ? "en" : "pl");
+    location.reload();  // simplest way to redraw every text
+  });
+  if (i18n.lang === "en") return;
+  try {
+    const data = await (await fetch(`${i18n.lang}.json`)).json();
+    i18n.strings = data.strings || {};
+    i18n.patterns = (data.patterns || []).map(([re, to]) => [new RegExp(re), to]);
+    const words = Object.keys(data.words || {});
+    if (words.length) {
+      const esc = words.sort((a, b) => b.length - a.length).map(w => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+      i18n.words = { map: data.words, re: new RegExp(`(?<![\\w])(${esc.join("|")})(?![\\w])`, "g") };
+    }
+    translateStatic();
+  } catch { i18n.lang = "en"; btn.textContent = "EN"; }
+}
+
 const ui = {
   state: "disconnected",
   params: [],          // supported params [{key,label,unit,pid,group,decimals}]
@@ -47,7 +132,7 @@ async function api(path, options = {}) {
 let toastTimer;
 function toast(msg, isError = false) {
   const el = $("#toast");
-  el.textContent = msg;
+  el.textContent = t(msg);
   el.classList.toggle("err", isError);
   el.hidden = false;
   clearTimeout(toastTimer);
@@ -58,8 +143,8 @@ function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
     if (k === "class") node.className = v;
-    else if (k === "text") node.textContent = v;
-    else node.setAttribute(k, v);
+    else if (k === "text") node.textContent = t(v);
+    else node.setAttribute(k, I18N_ATTRS.includes(k) ? t(v) : v);
   }
   for (const c of children) if (c != null) node.append(c);
   return node;
@@ -67,8 +152,8 @@ function el(tag, attrs = {}, ...children) {
 
 function fmt(value, decimals = 1) {
   if (value === null || value === undefined) return "—";
-  if (typeof value === "number") return value.toLocaleString("en-US", { maximumFractionDigits: decimals, minimumFractionDigits: 0 });
-  return String(value);
+  if (typeof value === "number") return value.toLocaleString(i18n.lang === "pl" ? "pl-PL" : "en-US", { maximumFractionDigits: decimals, minimumFractionDigits: 0 });
+  return t(String(value));
 }
 
 // ---------------------------------------------------------------- tabs
@@ -93,11 +178,11 @@ function applyState(s) {
   ui.state = s.state;
   const pill = $("#conn-pill");
   pill.dataset.state = s.state;
-  $("#conn-text").textContent = STATE_TEXT[s.state] + (s.settings && s.settings.simulate && s.state === "connected" ? " (simulator)" : "");
-  pill.title = s.error || "";
+  $("#conn-text").textContent = t(STATE_TEXT[s.state]) + (s.settings && s.settings.simulate && s.state === "connected" ? " " + t("(simulator)") : "");
+  pill.title = t(s.error || "");
   const err = $("#conn-error");
   err.hidden = !s.error;
-  err.textContent = s.error || "";
+  err.textContent = t(s.error || "");
   $("#btn-connect").disabled = s.state === "connecting";
   $("#btn-disconnect").disabled = s.state !== "connected";
   if (s.settings && prev !== s.state) {
@@ -164,7 +249,7 @@ function saveLayout() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     api("/api/dashboard", { method: "PUT", body: { keys: ui.keys, tiles: ui.tiles, sound: ui.sound } })
-      .catch(e => toast("Could not save the dashboard: " + e.message, true));
+      .catch(e => toast(t("Could not save the dashboard: {error}", { error: t(e.message) }), true));
   }, 400);
 }
 
@@ -236,10 +321,10 @@ function buildTiles() {
     const p = paramOf(key);
     const cfg = tileConfig(key);
     ui.series[key] = old[key] || { values: [], min: null, max: null };
-    const gear = el("button", { class: "tile-gear", type: "button", title: "Tile settings", "aria-label": `Settings: ${p.label}` }, "⚙");
+    const gear = el("button", { class: "tile-gear", type: "button", title: "Tile settings", "aria-label": t("Settings: {name}", { name: t(p.label) }) }, "⚙");
     gear.addEventListener("click", () => openTileDialog(key));
     const tile = el("div", { class: `tile stale type-${cfg.type}`, "data-key": key, draggable: "true" },
-      el("div", { class: "label", text: p.label, title: `${p.label} (${p.pid || key})` }),
+      el("div", { class: "label", text: p.label, title: `${t(p.label)} (${p.pid || key})` }),
       gear,
       cfg.type === "gauge" ? buildGauge(key, cfg) : null,
       el("div", { class: "value" }, el("span", { class: "num", text: "—" }), el("span", { class: "unit", text: p.unit })),
@@ -295,7 +380,7 @@ function fillTileDialog(cfg) {
 function openTileDialog(key) {
   tileKey = key;
   const p = paramOf(key);
-  $("#tile-title").textContent = p.label + (p.unit ? ` [${p.unit}]` : "");
+  $("#tile-title").textContent = t(p.label) + (p.unit ? ` [${p.unit}]` : "");
   fillTileDialog(tileConfig(key));
   $("#dlg-tile").showModal();
 }
@@ -335,7 +420,7 @@ function beep() {
 function applySound() {
   const btn = $("#btn-sound");
   btn.setAttribute("aria-pressed", String(ui.sound));
-  btn.textContent = "Alarm sound: " + (ui.sound ? "on" : "off");
+  btn.textContent = t(ui.sound ? "Alarm sound: on" : "Alarm sound: off");
 }
 $("#btn-sound").addEventListener("click", () => {
   ui.sound = !ui.sound;
@@ -348,7 +433,7 @@ function updateTiles(readings) {
   const now = performance.now();
   ui.frames.push(now);
   ui.frames = ui.frames.filter(t => now - t < 5000);
-  $("#rate").textContent = ui.frames.length > 1 ? `${(ui.frames.length / 5).toFixed(1)} reads/s` : "";
+  $("#rate").textContent = ui.frames.length > 1 ? t("{n} reads/s", { n: (ui.frames.length / 5).toFixed(1) }) : "";
 
   let alarm = false;
   for (const r of readings) {
@@ -389,7 +474,7 @@ function updateTiles(readings) {
   if (ui.recording) {
     const byKey = Object.fromEntries(readings.map(r => [r.key, r.value]));
     ui.recording.rows.push([new Date().toISOString(), ...ui.recording.keys.map(k => byKey[k] ?? "")]);
-    $("#btn-record").textContent = `■ Stop (${ui.recording.rows.length})`;
+    $("#btn-record").textContent = t("■ Stop ({n})", { n: ui.recording.rows.length });
   }
 }
 
@@ -399,23 +484,23 @@ function hms(seconds) {
   const m = Math.floor(seconds / 60), s = Math.round(seconds % 60);
   return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m}:${String(s).padStart(2, "0")} min`;
 }
-function updateTrip(t) {
-  if (!t) return;
+function updateTrip(trip) {
+  if (!trip) return;
   $("#trip").hidden = false;
-  $("#trip-distance").textContent = t.distance_km === null ? "—" : `${fmt(t.distance_km, 2)} km`;
-  $("#trip-fuel").textContent = t.fuel_l === null || !ui.params.some(p => p.key === "TRIP_FUEL") ? "—" : `${fmt(t.fuel_l, 2)} l`;
-  $("#trip-avg").textContent = t.average_l_100km === null ? "—" : `${fmt(t.average_l_100km, 1)} l/100 km`;
-  $("#trip-time").textContent = hms(t.duration_s);
-  $("#trip-idle").textContent = hms(t.idle_s);
+  $("#trip-distance").textContent = trip.distance_km === null ? "—" : `${fmt(trip.distance_km, 2)} km`;
+  $("#trip-fuel").textContent = trip.fuel_l === null || !ui.params.some(p => p.key === "TRIP_FUEL") ? "—" : `${fmt(trip.fuel_l, 2)} l`;
+  $("#trip-avg").textContent = trip.average_l_100km === null ? "—" : `${fmt(trip.average_l_100km, 1)} l/100 km`;
+  $("#trip-time").textContent = hms(trip.duration_s);
+  $("#trip-idle").textContent = hms(trip.idle_s);
   const hasFuel = ui.params.some(p => p.key === "FUEL_FLOW");
-  $("#trip-note").textContent = (ui.vehicle ? ui.vehicle.name + " · " : "") + t.fuel
-    + (hasFuel ? "" : " · fuel use not available for this car");
+  $("#trip-note").textContent = (ui.vehicle ? t(ui.vehicle.name) + " · " : "") + t(trip.fuel)
+    + (hasFuel ? "" : " · " + t("fuel use not available for this car"));
 }
 $("#btn-trip-reset").addEventListener("click", async () => {
   try {
     const res = await api("/api/trip/reset", { method: "POST", body: { save: true } });
     updateTrip(res.trip);
-    toast(res.saved ? `Trip saved to the history (${res.saved.summary})` : "Trip reset");
+    toast(res.saved ? t("Trip saved to the history ({summary})", { summary: tWords(res.saved.summary) }) : "Trip reset");
   } catch (e) { toast(e.message, true); }
 });
 
@@ -484,7 +569,7 @@ function sendLiveConfig() {
 $("#btn-pause").addEventListener("click", e => {
   ui.paused = !ui.paused;
   e.currentTarget.setAttribute("aria-pressed", String(ui.paused));
-  e.currentTarget.textContent = ui.paused ? "Resume" : "Pause";
+  e.currentTarget.textContent = t(ui.paused ? "Resume" : "Pause");
   sendLiveConfig();
 });
 
@@ -501,13 +586,13 @@ $("#btn-record").addEventListener("click", () => {
   if (!ui.recording) {
     ui.recording = { keys: [...ui.keys], rows: [] };
     btn.classList.add("recording");
-    btn.textContent = "■ Stop (0)";
+    btn.textContent = t("■ Stop ({n})", { n: 0 });
     return;
   }
   const { keys, rows } = ui.recording;
   ui.recording = null;
   btn.classList.remove("recording");
-  btn.textContent = "● Record CSV";
+  btn.textContent = t("● Record CSV");
   if (!rows.length) return;
   const csv = [["time", ...keys], ...rows].map(r => r.join(";")).join("\n");
   const blob = new Blob([csv], { type: "text/csv" });
@@ -515,7 +600,7 @@ $("#btn-record").addEventListener("click", () => {
   document.body.append(a);
   a.click();
   a.remove();
-  toast(`Saved ${rows.length} reads to CSV`);
+  toast(t("Saved {n} reads to CSV", { n: rows.length }));
 });
 
 // parameter picker
@@ -529,7 +614,7 @@ function buildPicker(selected) {
     for (const p of items) {
       const input = el("input", { type: "checkbox", value: p.key });
       input.checked = selected.includes(p.key);
-      box.append(el("label", {}, input, el("span", { text: p.label + (p.unit ? ` [${p.unit}]` : "") }), el("small", { text: p.pid })));
+      box.append(el("label", {}, input, el("span", { text: t(p.label) + (p.unit ? ` [${p.unit}]` : "") }), el("small", { text: p.pid })));
     }
   }
 }
@@ -555,7 +640,7 @@ function renderDtc(data) {
   box.replaceChildren();
   const mil = data.status ? data.status.mil : null;
   $("#mil").dataset.on = String(mil);
-  $("#mil-text").textContent = "MIL (check engine): " + (mil === null ? "—" : mil ? "ON" : "off");
+  $("#mil-text").textContent = t("MIL (check engine): {state}", { state: mil === null ? "—" : t(mil ? "ON" : "off") });
   const total = data.stored.length + data.pending.length;
   const badge = $("#dtc-badge");
   badge.hidden = !total;
@@ -576,7 +661,7 @@ function renderDtc(data) {
   ];
   for (const [title, items, cls, note] of groups) {
     if (!items.length) continue;
-    const group = el("div", { class: "dtc-group" }, el("h3", { text: `${title} · ${items.length}` }),
+    const group = el("div", { class: "dtc-group" }, el("h3", { text: `${t(title)} · ${items.length}` }),
       note ? el("p", { class: "muted group-note", text: note }) : null);
     for (const d of items) group.append(dtcRow(d, cls));
     box.append(group);
@@ -602,8 +687,8 @@ function freezeFrameCard(ff) {
       el("p", { class: "muted", text: "No freeze frame stored. The ECU saves one when it confirms a fault." }));
     return card;
   }
-  card.append(el("h3", { text: `Freeze frame · ${ff.dtc.code}` }),
-    el("p", { class: "muted", text: `Engine conditions when the ECU detected ${ff.dtc.code}`
+  card.append(el("h3", { text: `${t("Freeze frame")} · ${ff.dtc.code}` }),
+    el("p", { class: "muted", text: t("Engine conditions when the ECU detected {code}", { code: ff.dtc.code })
       + (ff.dtc.description ? ` (${ff.dtc.description})` : "") + "." }));
   const grid = el("div", { class: "ff-grid" });
   for (const r of ff.readings) {
@@ -637,8 +722,8 @@ dlgClear.addEventListener("close", async () => {
   try {
     const after = await api("/api/dtc/clear", { method: "POST", body: { confirm: true } });
     const left = after.stored.length + after.pending.length;
-    toast(left ? `Cleared, but ${left} code(s) came back — the fault is still present`
-      : "Trouble codes cleared" + (after.backup ? " · backup saved to History" : ""), !!left);
+    toast(left ? t("Cleared, but {n} code(s) came back — the fault is still present", { n: left })
+      : t("Trouble codes cleared") + (after.backup ? " · " + t("backup saved to History") : ""), !!left);
     $("#tests-list").replaceChildren(el("p", { class: "empty", text: "Click “Read test results”." }));
     $("#tests-chips").replaceChildren();
     await readDtc(true);
@@ -656,6 +741,15 @@ function downloadBlob(blob, filename) {
   a.remove();
 }
 
+function findingRow(f) {
+  const x = findingText(f);
+  return el("div", { class: "finding " + f.severity },
+    el("span", { class: "sev", text: SEV_LABEL[f.severity] }),
+    el("span", { class: "title", text: x.title }, el("span", { class: "area", text: x.area })),
+    el("span", { class: "fval", text: x.value }),
+    el("span", { class: "detail", text: x.detail }));
+}
+
 function renderHealth(r) {
   const box = $("#health-result");
   box.replaceChildren();
@@ -663,31 +757,25 @@ function renderHealth(r) {
     el("div", {}, el("div", {}, el("b", { text: String(r.score) }), el("span", { text: r.grade }))));
   const chips = el("div", { class: "chips" });
   for (const k of ["critical", "warn", "info", "ok", "skipped"]) {
-    if (r.counts[k]) chips.append(el("span", { class: "chip " + k, text: `${r.counts[k]} ${SEV_LABEL[k].toLowerCase()}` }));
+    if (r.counts[k]) chips.append(el("span", { class: "chip " + k, text: t(`{n} ${SEV_LABEL[k].toLowerCase()}`, { n: r.counts[k] }) }));
   }
   const v = r.vehicle || {};
   const headline = { Good: "The car looks healthy", Fair: "Some things need attention", Poor: "Problems found" }[r.grade];
   const meta = el("div", { class: "health-meta" },
     el("h2", { text: headline }),
     chips,
-    el("div", { class: "muted", text: `${r.created.replace("T", " ")} · ${Math.round(r.duration)} s · ${r.samples} samples`
-      + (v.simulated ? " · simulator" : "") }));
+    el("div", { class: "muted", text: `${r.created.replace("T", " ")} · ${Math.round(r.duration)} s · ` + t("{n} samples", { n: r.samples })
+      + (v.simulated ? " · " + t("simulator") : "") }));
   const jsonBtn = el("button", { class: "btn", type: "button", text: "Download JSON" });
   jsonBtn.addEventListener("click", () => downloadBlob(
     new Blob([JSON.stringify(r, null, 2)], { type: "application/json" }),
     `health-report-${r.created.replace(/:/g, "-")}.json`));
   const actions = el("div", { class: "actions" },
-    el("a", { class: "btn", href: "/api/health/report.html", target: "_blank", rel: "noopener", text: "Printable report" }),
-    el("a", { class: "btn", href: "/api/health/report.html?download=1", text: "Download HTML" }),
+    el("a", { class: "btn", href: `/api/health/report.html?lang=${i18n.lang}`, target: "_blank", rel: "noopener", text: "Printable report" }),
+    el("a", { class: "btn", href: `/api/health/report.html?download=1&lang=${i18n.lang}`, text: "Download HTML" }),
     jsonBtn);
   box.append(el("div", { class: "card health-summary" }, ring, meta, el("span", { class: "spacer" }), actions));
-  for (const f of r.findings) {
-    box.append(el("div", { class: "finding " + f.severity },
-      el("span", { class: "sev", text: SEV_LABEL[f.severity] }),
-      el("span", { class: "title", text: f.title }, el("span", { class: "area", text: f.area })),
-      el("span", { class: "fval", text: f.value || "" }),
-      el("span", { class: "detail", text: f.detail || "" })));
-  }
+  for (const f of r.findings) box.append(findingRow(f));
   box.append(el("p", { class: "disclaimer", text: r.disclaimer }));
 }
 
@@ -698,7 +786,7 @@ function runHealth() {
   btn.disabled = true;
   $("#health-progress").hidden = false;
   $("#health-bar").style.width = "0%";
-  $("#health-msg").textContent = "Starting…";
+  $("#health-msg").textContent = t("Starting…");
   // pause the dashboard so the check gets the full adapter bandwidth
   const wasPaused = ui.paused;
   ui.paused = true;
@@ -711,11 +799,11 @@ function runHealth() {
     if (msg.error) { toast(msg.error, true); return; }
     if (msg.progress !== undefined) {
       $("#health-bar").style.width = `${Math.round(msg.progress * 100)}%`;
-      $("#health-msg").textContent = msg.message;
+      $("#health-msg").textContent = t(msg.message);
     }
     if (msg.report) {
       renderHealth(msg.report);
-      toast(`Health check: ${msg.report.score}/100 – ${msg.report.grade}`);
+      toast(t("Health check: {score}/100 – {grade}", { score: msg.report.score, grade: t(msg.report.grade) }));
     }
   };
   ws.onclose = () => {
@@ -736,25 +824,25 @@ async function loadLastHealth() {
 // ---------------------------------------------------------------- monitor tests (mode 06)
 const TEST_LABEL = { pass: "Pass", near: "Near limit", fail: "Fail" };
 
-function limitText(t) {
-  const u = t.unit ? " " + t.unit : "";
-  if (t.min !== null && t.max !== null) return `allowed ${fmt(t.min, 3)} – ${fmt(t.max, 3)}${u}`;
-  if (t.max !== null) return `limit ${fmt(t.max, 3)}${u}`;
-  if (t.min !== null) return `minimum ${fmt(t.min, 3)}${u}`;
-  return "no limit";
+function limitText(x) {
+  const u = x.unit ? " " + x.unit : "";
+  if (x.min !== null && x.max !== null) return t("allowed {range}", { range: `${fmt(x.min, 3)} – ${fmt(x.max, 3)}${u}` });
+  if (x.max !== null) return t("limit {value}", { value: fmt(x.max, 3) + u });
+  if (x.min !== null) return t("minimum {value}", { value: fmt(x.min, 3) + u });
+  return t("no limit");
 }
 
-function testBar(t) {
-  if (t.margin === null) return el("div", { class: "mon-bar none" });
+function testBar(x) {
+  if (x.margin === null) return el("div", { class: "mon-bar none" });
   const bar = el("div", { class: "mon-bar" });
-  if (t.min !== null && t.max !== null) {
+  if (x.min !== null && x.max !== null) {
     // position inside the allowed window
-    const pos = Math.min(100, Math.max(0, (t.value - t.min) / (t.max - t.min) * 100));
+    const pos = Math.min(100, Math.max(0, (x.value - x.min) / (x.max - x.min) * 100));
     bar.classList.add("window");
     bar.append(el("span", { class: "mon-dot", style: `left:${pos.toFixed(1)}%` }));
   } else {
     // how much of the way to the limit is used up
-    bar.append(el("span", { class: "mon-fill", style: `width:${(100 - Math.min(100, t.margin)).toFixed(1)}%` }));
+    bar.append(el("span", { class: "mon-fill", style: `width:${(100 - Math.min(100, x.margin)).toFixed(1)}%` }));
   }
   return bar;
 }
@@ -773,20 +861,20 @@ function renderTests(data) {
     return;
   }
   for (const [k, cls] of [["fail", "critical"], ["near", "warn"], ["pass", "ok"]]) {
-    if (data.counts[k]) chips.append(el("span", { class: "chip " + cls, text: `${data.counts[k]} ${TEST_LABEL[k].toLowerCase()}` }));
+    if (data.counts[k]) chips.append(el("span", { class: "chip " + cls, text: t(`{n} ${TEST_LABEL[k].toLowerCase()}`, { n: data.counts[k] }) }));
   }
   const groups = new Map();
-  for (const t of data.tests) (groups.get(t.monitor) || groups.set(t.monitor, []).get(t.monitor)).push(t);
+  for (const x of data.tests) (groups.get(x.monitor) || groups.set(x.monitor, []).get(x.monitor)).push(x);
   for (const [monitor, tests] of groups) {
-    const worst = tests.some(t => t.status === "fail") ? "fail" : tests.some(t => t.status === "near") ? "near" : "pass";
+    const worst = tests.some(y => y.status === "fail") ? "fail" : tests.some(y => y.status === "near") ? "near" : "pass";
     const group = el("div", { class: "mon-group " + worst }, el("h3", { text: monitor }));
-    for (const t of tests) {
-      group.append(el("div", { class: "mon-test " + t.status },
-        el("span", { class: "mon-status", text: TEST_LABEL[t.status] }),
-        el("span", { class: "mon-name", text: t.name, title: `Monitor $${t.id.replace(":", " test $")}` }),
-        el("span", { class: "mon-value", text: fmt(t.value, 3) + (t.unit ? " " + t.unit : "") }),
-        testBar(t),
-        el("span", { class: "mon-limit", text: limitText(t) + (t.margin !== null ? ` · ${fmt(t.margin, 0)} % headroom` : "") })));
+    for (const x of tests) {
+      group.append(el("div", { class: "mon-test " + x.status },
+        el("span", { class: "mon-status", text: TEST_LABEL[x.status] }),
+        el("span", { class: "mon-name", text: x.name, title: `Monitor $${x.id.replace(":", " test $")}` }),
+        el("span", { class: "mon-value", text: fmt(x.value, 3) + (x.unit ? " " + x.unit : "") }),
+        testBar(x),
+        el("span", { class: "mon-limit", text: limitText(x) + (x.margin !== null ? " · " + t("{n} % headroom", { n: fmt(x.margin, 0) }) : "") })));
     }
     box.append(group);
   }
@@ -821,7 +909,7 @@ async function loadVehicles() {
   $("#veh-fuel").value = active.fuel;
   $("#veh-vin").value = active.vin || "";
   $("#veh-notes").value = active.notes || "";
-  $("#veh-meta").textContent = `created ${active.created.replace("T", " ")}`;
+  $("#veh-meta").textContent = t("created {date}", { date: active.created.replace("T", " ") });
   $("#btn-veh-delete").disabled = vehicles.length < 2;
   showLastConnection();
 }
@@ -833,7 +921,7 @@ async function loadHistory() {
     const data = await api("/api/history" + (kind ? `?kind=${kind}` : ""));
     renderHistory(data.records);
     const about = await api("/api/about");
-    $("#hist-dir").textContent = `Files are stored in ${about.data_dir}`;
+    $("#hist-dir").textContent = t("Files are stored in {dir}", { dir: about.data_dir });
   } catch (e) { toast(e.message, true); }
 }
 
@@ -854,7 +942,7 @@ function renderHistory(records) {
     view.addEventListener("click", () => viewRecord(r.id));
     const del = el("button", { class: "btn btn-danger", type: "button", text: "Delete" });
     del.addEventListener("click", async () => {
-      if (!confirm(`Delete this record?\n${KIND_LABEL[r.kind]} · ${r.created.replace("T", " ")}`)) return;
+      if (!confirm(`${t("Delete this record?")}\n${t(KIND_LABEL[r.kind])} · ${r.created.replace("T", " ")}`)) return;
       try { await api(`/api/history/${r.id}`, { method: "DELETE" }); loadHistory(); }
       catch (e) { toast(e.message, true); }
     });
@@ -862,9 +950,9 @@ function renderHistory(records) {
       el("span", { class: "hist-pick" }, pick),
       el("span", { class: "hist-date", text: r.created.replace("T", " ") }),
       el("span", { class: "hist-kind", text: KIND_LABEL[r.kind] || r.kind }),
-      el("span", { class: "hist-summary", text: r.summary }),
+      el("span", { class: "hist-summary", text: tWords(r.summary) }),
       el("span", { class: "actions" },
-        r.kind === "health" ? el("a", { class: "btn", href: `/api/history/${r.id}/report.html`, target: "_blank", rel: "noopener", text: "Report" }) : null,
+        r.kind === "health" ? el("a", { class: "btn", href: `/api/history/${r.id}/report.html?lang=${i18n.lang}`, target: "_blank", rel: "noopener", text: "Report" }) : null,
         view, del)));
   }
 }
@@ -877,12 +965,12 @@ async function viewRecord(id) {
     const rec = await api(`/api/history/${id}`);
     const body = $("#record-body");
     body.replaceChildren();
-    $("#record-title").textContent = `${KIND_LABEL[rec.kind] || rec.kind} · ${rec.created.replace("T", " ")}`;
+    $("#record-title").textContent = `${t(KIND_LABEL[rec.kind] || rec.kind)} · ${rec.created.replace("T", " ")}`;
     const d = rec.data;
     if (rec.kind === "dtc-backup") {
       for (const [title, items, cls] of [["Stored", d.dtcs.stored, ""], ["Pending", d.dtcs.pending, "pending"], ["Permanent", d.dtcs.permanent || [], "permanent"]]) {
         if (!items.length) continue;
-        body.append(el("h4", { text: `${title} · ${items.length}` }));
+        body.append(el("h4", { text: `${t(title)} · ${items.length}` }));
         for (const c of items) body.append(dtcRow(c, cls));
       }
       body.append(freezeFrameCard(d.freeze_frame));
@@ -890,7 +978,7 @@ async function viewRecord(id) {
       const dl = el("dl");
       fillDl(dl, [
         ["Distance", `${fmt(d.distance_km, 2)} km`],
-        ["Fuel used", d.fuel_l === null ? "—" : `${fmt(d.fuel_l, 2)} l (${d.fuel})`],
+        ["Fuel used", d.fuel_l === null ? "—" : `${fmt(d.fuel_l, 2)} l (${t(d.fuel)})`],
         ["Average consumption", d.average_l_100km === null ? "—" : `${fmt(d.average_l_100km, 1)} l/100 km`],
         ["Average speed", d.average_speed_kmh === null ? "—" : `${fmt(d.average_speed_kmh, 0)} km/h`],
         ["Time", hms(d.duration_s)],
@@ -898,14 +986,10 @@ async function viewRecord(id) {
       ]);
       body.append(dl);
     } else {
-      body.append(el("p", { text: `Score ${d.score}/100 – ${d.grade}` }));
+      body.append(el("p", { text: t("Score {score}/100 – {grade}", { score: d.score, grade: t(d.grade) }) }));
       for (const f of d.findings) {
         if (f.severity === "ok" || f.severity === "skipped") continue;
-        body.append(el("div", { class: "finding " + f.severity },
-          el("span", { class: "sev", text: SEV_LABEL[f.severity] }),
-          el("span", { class: "title", text: f.title }, el("span", { class: "area", text: f.area })),
-          el("span", { class: "fval", text: f.value || "" }),
-          el("span", { class: "detail", text: f.detail || "" })));
+        body.append(findingRow(f));
       }
       if (!$(".finding", body)) body.append(el("p", { class: "muted", text: "No problems found." }));
     }
@@ -939,14 +1023,14 @@ async function compareReports() {
     rows.sort((p, q) => order[p.change] - order[q.change]);
     const CHANGE = { worse: "Worse", new: "New problem", better: "Improved", gone: "Fixed", same: "No change" };
     const cell = f => f ? el("td", {}, el("span", { class: "sev-tag " + f.severity, text: SEV_LABEL[f.severity] }),
-      el("span", { class: "mono", text: f.value ? " " + f.value : "" })) : el("td", { class: "muted", text: "—" });
+      el("span", { class: "mono", text: f.value ? " " + t(f.value) : "" })) : el("td", { class: "muted", text: "—" });
     const table = el("table", { class: "table wrap" },
-      el("thead", {}, el("tr", {}, ...["Finding", `Before · ${a.created.replace("T", " ")}`, `After · ${b.created.replace("T", " ")}`, "Change"].map(h => el("th", { text: h })))));
+      el("thead", {}, el("tr", {}, ...["Finding", `${t("Before")} · ${a.created.replace("T", " ")}`, `${t("After")} · ${b.created.replace("T", " ")}`, "Change"].map(h => el("th", { text: h })))));
     const body = el("tbody");
     for (const r of rows) {
       const f = r.y || r.x;
       body.append(el("tr", { class: "cmp-" + r.change },
-        el("td", {}, el("strong", { text: f.title }), el("div", { class: "muted", text: f.area })),
+        el("td", {}, el("strong", { text: findingText(f).title }), el("div", { class: "muted", text: f.area })),
         cell(r.x), cell(r.y), el("td", { class: "cmp-change", text: CHANGE[r.change] })));
     }
     table.append(body);
@@ -955,7 +1039,7 @@ async function compareReports() {
       el("h3", { text: "Comparison" }),
       el("p", { class: "cmp-score" },
         el("b", { text: `${a.data.score} → ${b.data.score}` }),
-        el("span", { class: diff > 0 ? "up" : diff < 0 ? "down" : "muted", text: diff ? ` (${diff > 0 ? "+" : ""}${diff} points)` : " (no change)" })),
+        el("span", { class: diff > 0 ? "up" : diff < 0 ? "down" : "muted", text: " " + (diff ? t("({diff} points)", { diff: (diff > 0 ? "+" : "") + diff }) : t("(no change)")) })),
       el("div", { class: "table-wrap" }, table));
     $("#hist-compare").replaceChildren(card);
     card.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1000,7 +1084,7 @@ $("#dlg-vehicle").addEventListener("close", async () => {
 });
 $("#btn-veh-delete").addEventListener("click", async () => {
   const v = vehicles.find(x => x.id === $("#veh-select").value);
-  if (!v || !confirm(`Delete the profile “${v.name}” with its dashboard layout and all history records?`)) return;
+  if (!v || !confirm(t("Delete the profile “{name}” with its dashboard layout and all history records?", { name: v.name }))) return;
   try {
     await api(`/api/vehicles/${v.id}`, { method: "DELETE" });
     await pollState();
@@ -1021,9 +1105,9 @@ $("#btn-about").addEventListener("click", async () => {
     $("#about-version").textContent = "v" + a.version;
     const links = $("#about-support-links");
     links.replaceChildren(...a.support.map(l => el("a", { class: "btn btn-primary", href: l.url, target: "_blank", rel: "noopener", text: l.name })));
-    $("#about-support-text").textContent = a.support.length
+    $("#about-support-text").textContent = t(a.support.length
       ? "OBD Tool is free and open source. If it saved you a trip to the workshop, you can support its development:"
-      : "OBD Tool is free and open source. A star on GitHub, a bug report or telling a friend all help.";
+      : "OBD Tool is free and open source. A star on GitHub, a bug report or telling a friend all help.");
     const dl = $("#about-links");
     dl.replaceChildren();
     for (const [k, url] of [["Source code", a.repo], ["Report a problem", a.issues]]) {
@@ -1047,7 +1131,7 @@ async function loadAdapters() {
         el("td", { class: "muted", text: ad.notes })));
     }
     table.append(body);
-    $("#adapters-note").textContent = a.vehicles;
+    $("#adapters-note").textContent = t(a.vehicles);
   } catch { /* ignore */ }
 }
 
@@ -1055,7 +1139,7 @@ function showLastConnection() {
   const c = ui.vehicle && ui.vehicle.connection;
   $("#last-conn").hidden = !c;
   if (!c) return;
-  $("#last-conn-text").textContent = `Last working settings for ${ui.vehicle.name}: ${c.port}`
+  $("#last-conn-text").textContent = t("Last working settings for {name}: {port}", { name: ui.vehicle.name, port: c.port })
     + (c.baudrate ? `, ${c.baudrate} baud` : "") + (c.protocol_name ? `, ${c.protocol_name}` : "");
 }
 $("#btn-last-conn").addEventListener("click", () => {
@@ -1079,7 +1163,7 @@ async function loadInfo() {
     const [info, params] = await Promise.all([api("/api/info"), api("/api/params")]);
     const a = info.adapter, s = info.status;
     fillDl($("#info-adapter"), [
-      ["Port", a.port + (a.simulated ? " (simulator)" : "")],
+      ["Port", a.port + (a.simulated ? " " + t("(simulator)") : "")],
       ["Adapter", a.elm_version || "?"],
       ["Voltage", a.voltage != null ? `${fmt(a.voltage, 1)} V` : "?"],
       ["Protocol", `${a.protocol} (#${a.protocol_id})`],
@@ -1089,7 +1173,7 @@ async function loadInfo() {
       ["Ignition", s.ignition_type],
       ["MIL (check engine)", s.mil ? "ON" : "off"],
       ["Stored codes", String(s.dtc_count)],
-      ["Parameters", `${params.params.length} supported`],
+      ["Parameters", t("{n} supported", { n: params.params.length })],
     ]);
     const ready = $("#readiness");
     ready.replaceChildren();
@@ -1141,9 +1225,11 @@ $("#btn-disconnect").addEventListener("click", async () => {
 });
 
 // ---------------------------------------------------------------- start
-showTab(store.get("tab", "dash"));
-pollState();
-setInterval(pollState, 3000);
+initLanguage().then(() => {
+  showTab(store.get("tab", "dash"));
+  pollState();
+  setInterval(pollState, 3000);
+});
 window.addEventListener("resize", () => {
   for (const [key, s] of Object.entries(ui.series)) {
     const c = $(`.tile[data-key="${key}"] canvas`);

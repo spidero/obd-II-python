@@ -397,3 +397,6 @@ dialog::backdrop { background: rgb(0 0 0 / .55); }
   .hist-summary, .hist-row .actions { grid-column: 2 / -1; }
   .icon-btn { order: 2; }
 }
+
+.lang-btn { font: 700 .75rem var(--sans); color: var(--muted); letter-spacing: .04em; }
+.lang-btn:hover { border-color: var(--accent); color: var(--text); }
