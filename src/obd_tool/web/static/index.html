@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OBD Tool</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23f5a524'/%3E%3Cpath d='M7 20a9 9 0 0 1 18 0' stroke='%23111' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3Cpath d='M16 20l5-6' stroke='%23111' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7"/><path d="M7 20a9 9 0 0 1 18 0" /><path d="M16 20l5-6"/></svg>
+      <span>OBD&nbsp;Tool</span>
+    </div>
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-tab="dash" aria-selected="true">Dashboard</button>
+      <button role="tab" data-tab="dtc">Trouble codes <span class="badge" id="dtc-badge" hidden></span></button>
+      <button role="tab" data-tab="info">Vehicle info</button>
+      <button role="tab" data-tab="conn">Connection</button>
+    </nav>
+    <div class="conn-pill" id="conn-pill" data-state="disconnected" title="Connection state">
+      <span class="dot"></span><span id="conn-text">Disconnected</span>
+    </div>
+  </header>
+
+  <main>
+    <!-- Dashboard -->
+    <section id="tab-dash" class="tab" data-active>
+      <div class="toolbar">
+        <div class="toolbar-group">
+          <button class="btn" id="btn-pause" aria-pressed="false">Pause</button>
+          <label class="field-inline">Refresh
+            <select id="sel-interval">
+              <option value="0.25">0.25 s</option>
+              <option value="0.5" selected>0.5 s</option>
+              <option value="1">1 s</option>
+              <option value="2">2 s</option>
+            </select>
+          </label>
+          <span class="muted" id="rate"></span>
+        </div>
+        <div class="toolbar-group">
+          <button class="btn" id="btn-record">● Record CSV</button>
+          <button class="btn" id="btn-params">Parameters…</button>
+        </div>
+      </div>
+      <div class="grid" id="tiles"></div>
+      <p class="empty" id="dash-empty" hidden>Connect to the car to see live data.</p>
+    </section>
+
+    <!-- DTC -->
+    <section id="tab-dtc" class="tab">
+      <div class="toolbar">
+        <div class="toolbar-group">
+          <div class="mil" id="mil" data-on="unknown">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h3l2-3h6l1 2h3v3h1v4h-1v2h-4l-2 2H9l-2-2H4z"/></svg>
+            <span id="mil-text">MIL (check engine): —</span>
+          </div>
+        </div>
+        <div class="toolbar-group">
+          <button class="btn" id="btn-dtc-read">Read codes</button>
+          <button class="btn btn-danger" id="btn-dtc-clear">Clear codes…</button>
+        </div>
+      </div>
+      <div id="dtc-list"><p class="empty">Click “Read codes”.</p></div>
+    </section>
+
+    <!-- Info -->
+    <section id="tab-info" class="tab">
+      <div class="toolbar">
+        <div class="toolbar-group"><h2>Adapter and vehicle</h2></div>
+        <div class="toolbar-group"><button class="btn" id="btn-info">Refresh</button></div>
+      </div>
+      <div class="cards">
+        <div class="card"><h3>Adapter</h3><dl id="info-adapter"><dt>—</dt><dd></dd></dl></div>
+        <div class="card"><h3>Vehicle</h3><dl id="info-vehicle"><dt>—</dt><dd></dd></dl></div>
+      </div>
+      <div class="card">
+        <h3>Readiness monitors</h3>
+        <div class="readiness" id="readiness"><p class="muted">No data.</p></div>
+      </div>
+      <div class="card">
+        <h3>Supported parameters</h3>
+        <div class="table-wrap"><table class="table" id="params-table"><tbody><tr><td class="muted">No data.</td></tr></tbody></table></div>
+      </div>
+    </section>
+
+    <!-- Connection -->
+    <section id="tab-conn" class="tab">
+      <div class="card narrow">
+        <h3>Adapter connection</h3>
+        <form id="conn-form">
+          <label class="field">Port
+            <input list="ports" id="in-port" placeholder="auto detect" autocomplete="off">
+            <datalist id="ports"></datalist>
+          </label>
+          <div class="row">
+            <label class="field">Baud rate
+              <select id="in-baud">
+                <option value="">auto</option>
+                <option>38400</option><option>115200</option><option>230400</option><option>500000</option><option>9600</option>
+              </select>
+            </label>
+            <label class="field">Protocol
+              <select id="in-protocol">
+                <option value="">auto</option>
+                <option value="6">6 – CAN 11 bit / 500 kb</option>
+                <option value="7">7 – CAN 29 bit / 500 kb</option>
+                <option value="8">8 – CAN 11 bit / 250 kb</option>
+                <option value="9">9 – CAN 29 bit / 250 kb</option>
+                <option value="3">3 – ISO 9141-2</option>
+                <option value="4">4 – KWP2000 5 baud</option>
+                <option value="5">5 – KWP2000 fast</option>
+                <option value="1">1 – J1850 PWM</option>
+                <option value="2">2 – J1850 VPW</option>
+              </select>
+            </label>
+          </div>
+          <label class="check"><input type="checkbox" id="in-sim"> Simulator (no car needed)</label>
+          <div class="actions">
+            <button class="btn btn-primary" type="submit" id="btn-connect">Connect</button>
+            <button class="btn" type="button" id="btn-disconnect">Disconnect</button>
+          </div>
+          <p class="error" id="conn-error" hidden></p>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <!-- Parameter picker -->
+  <dialog id="dlg-params">
+    <form method="dialog" class="dialog">
+      <h3>Dashboard parameters</h3>
+      <div class="picker" id="picker"></div>
+      <div class="actions">
+        <button class="btn" value="default" id="btn-params-default" type="button">Defaults</button>
+        <span class="spacer"></span>
+        <button class="btn" value="cancel">Cancel</button>
+        <button class="btn btn-primary" value="ok">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Clear DTC confirmation -->
+  <dialog id="dlg-clear">
+    <form method="dialog" class="dialog">
+      <h3>Clear trouble codes?</h3>
+      <p>Clearing (mode 04) erases stored and pending codes and freeze frame data,
+        and <strong>resets the readiness monitors</strong>. Until the monitors complete again
+        (a few drive cycles) the car may fail an emissions inspection.</p>
+      <p>If the fault is still present, the code will come back.</p>
+      <label class="check"><input type="checkbox" id="clear-ack"> I understand, clear the codes</label>
+      <div class="actions">
+        <span class="spacer"></span>
+        <button class="btn" value="cancel">Cancel</button>
+        <button class="btn btn-danger" value="ok" id="btn-clear-ok" disabled>Clear</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" hidden></div>
+  <script src="app.js"></script>
+</body>
+</html>
