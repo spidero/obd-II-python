@@ -36,7 +36,7 @@ class Param:
 class Dtc:
     code: str
     description: str
-    kind: str  # "stored" | "pending"
+    kind: str  # "stored" | "pending" | "permanent" | "freeze"
     system: str = ""  # name of the system the code belongs to
 
     def to_dict(self) -> dict:
@@ -47,15 +47,80 @@ class Dtc:
 class DtcReport:
     stored: list[Dtc] = field(default_factory=list)
     pending: list[Dtc] = field(default_factory=list)
+    permanent: list[Dtc] = field(default_factory=list)   # mode 0A: survive clearing until the fault is proven fixed
+    permanent_supported: bool = False
 
     @property
     def total(self) -> int:
+        """Stored + pending codes (permanent codes repeat stored ones and cannot be cleared)."""
         return len(self.stored) + len(self.pending)
 
     def to_dict(self) -> dict:
         return {
             "stored": [d.to_dict() for d in self.stored],
             "pending": [d.to_dict() for d in self.pending],
+            "permanent": [d.to_dict() for d in self.permanent],
+            "permanent_supported": self.permanent_supported,
+        }
+
+
+@dataclass
+class FreezeFrame:
+    """Engine conditions recorded by the ECU when a fault was detected (mode 02)."""
+    supported: bool = False          # the ECU answers mode 02 requests
+    dtc: Dtc | None = None           # code that triggered the frame; None = no frame stored
+    readings: list[Reading] = field(default_factory=list)
+
+    @property
+    def present(self) -> bool:
+        return self.dtc is not None
+
+    def to_dict(self) -> dict:
+        return {
+            "supported": self.supported,
+            "present": self.present,
+            "dtc": self.dtc.to_dict() if self.dtc else None,
+            "readings": [r.to_dict() for r in self.readings],
+        }
+
+
+@dataclass
+class MonitorTest:
+    """One on-board monitor test result (mode 06): measured value against the ECU's limits."""
+    mid: int                 # monitor id, e.g. 0x21 = catalyst bank 1
+    tid: int                 # test id (0x80+ are manufacturer defined)
+    monitor: str             # monitor name
+    name: str                # test name
+    value: float
+    min: float | None        # None = no lower limit
+    max: float | None        # None = no upper limit
+    unit: str = ""
+    status: str = "pass"     # pass | near | fail
+    margin: float | None = None   # headroom to the nearest limit in % (0 = at the limit)
+
+    @property
+    def id(self) -> str:
+        return f"{self.mid:02X}:{self.tid:02X}"
+
+    def to_dict(self) -> dict:
+        data = asdict(self)
+        data["id"] = self.id
+        return data
+
+
+@dataclass
+class MonitorReport:
+    supported: bool = False
+    tests: list[MonitorTest] = field(default_factory=list)
+
+    def count(self, status: str) -> int:
+        return sum(1 for t in self.tests if t.status == status)
+
+    def to_dict(self) -> dict:
+        return {
+            "supported": self.supported,
+            "tests": [t.to_dict() for t in self.tests],
+            "counts": {k: self.count(k) for k in ("pass", "near", "fail")},
         }
 
 

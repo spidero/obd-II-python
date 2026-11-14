@@ -15,7 +15,9 @@ import obd
 from obd import OBDStatus
 
 from . import dtc as dtc_codes
-from .models import AdapterInfo, Dtc, DtcReport, Param, Reading, ReadinessTest, VehicleStatus
+from . import diag
+from .models import (AdapterInfo, Dtc, DtcReport, FreezeFrame, MonitorReport, Param, Reading, ReadinessTest,
+                     VehicleStatus)
 from .pids import NOT_LIVE, READINESS_LABELS, param_for, unit_name
 
 log = logging.getLogger(__name__)
@@ -162,6 +164,14 @@ class ObdSession:
             raise ObdError(self.last_error)
         return response
 
+    def _raw(self, command: str) -> list[bytes]:
+        """Send a raw service request, return the response payloads (engine ECU first)."""
+        cmd = obd.OBDCommand("RAW_" + command, "raw " + command, command.encode(), 0,
+                             lambda messages: [(m.ecu, bytes(m.data)) for m in messages], obd.ECU.ALL, False)
+        answers = self._query(cmd, force=True).value or []
+        answers.sort(key=lambda item: item[0] != obd.ECU.ENGINE)
+        return [data for _, data in answers]
+
     def adapter_info(self) -> AdapterInfo:
         with self._lock:
             conn = self._require()
@@ -244,7 +254,23 @@ class ObdSession:
                     description = dtc_codes.clean_description(description) or dtc_codes.describe(code)
                     target.append(Dtc(code=code, description=description,
                                       kind=kind, system=dtc_codes.system_of(code)))
+            permanent = diag.read_permanent(self._raw)
+            report.permanent_supported = permanent is not None
+            report.permanent = permanent or []
             return report
+
+    def read_freeze_frame(self) -> FreezeFrame:
+        """Engine conditions stored with the fault (mode 02, frame 0)."""
+        with self._lock:
+            return diag.read_freeze_frame(self._raw, _plain_value)
+
+    def read_monitors(self) -> MonitorReport:
+        """On-board monitor test results (mode 06). Only available on CAN."""
+        with self._lock:
+            conn = self._require()
+            if conn.protocol_id() not in ("6", "7", "8", "9"):
+                return MonitorReport(supported=False)
+            return diag.read_monitors(self._raw)
 
     def clear_dtcs(self) -> None:
         """Clear trouble codes (mode 04). Also resets readiness monitors and freeze frames."""

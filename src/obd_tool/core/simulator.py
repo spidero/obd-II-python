@@ -2,8 +2,9 @@
 
 The emulator mimics a vLinker FS (ELM327 v2.3) connected to a petrol car on
 ISO 15765-4 CAN 11 bit / 500 kbit with a single engine ECU at 7E8 - the same
-set-up as the test car. It answers AT commands, mode 01 (live data), 03/07
-(trouble codes), 04 (clear codes) and 09 02 (VIN).
+set-up as the test car. It answers AT commands, mode 01 (live data), 02 (freeze
+frame), 03/07/0A (stored, pending and permanent trouble codes), 04 (clear codes),
+06 (on-board monitor test results) and 09 02 (VIN).
 
 Faults can be injected to see what a bad health check looks like, see FAULTS.
 
@@ -118,6 +119,10 @@ class Elm327Emulator:
         self.engine = EngineModel(seed, offset=600 if warm else 0, faults=self.faults)
         self.stored_dtcs = list(stored_dtcs)
         self.pending_dtcs = list(pending_dtcs)
+        # permanent codes mirror the confirmed ones and survive clearing (mode 04)
+        self.permanent_dtcs = list(self.stored_dtcs[-1:])
+        # the freeze frame belongs to the first confirmed code and is erased by clearing
+        self.freeze_frame: dict[int, bytes] | None = self._snapshot(self.stored_dtcs[0]) if self.stored_dtcs else None
         self.vin = vin
         self.distance_with_mil = 42 if self.stored_dtcs else 0
         self.distance_since_clear = 1234
@@ -258,6 +263,12 @@ class Elm327Emulator:
         mode = int(cmd[0:2], 16)
         if mode == 0x01 and len(cmd) == 4:
             data = self._mode01(int(cmd[2:4], 16))
+        elif mode == 0x02 and len(cmd) == 6:
+            data = self._mode02(int(cmd[2:4], 16), int(cmd[4:6], 16))
+        elif mode == 0x06 and len(cmd) == 4:
+            data = self._mode06(int(cmd[2:4], 16))
+        elif mode == 0x0A and len(cmd) == 2:
+            data = self._dtc_frame(0x4A, self.permanent_dtcs)
         elif mode == 0x03 and len(cmd) == 2:
             data = self._dtc_frame(0x43, self.stored_dtcs)
         elif mode == 0x07 and len(cmd) == 2:
@@ -382,6 +393,82 @@ class Elm327Emulator:
             return None
         return bytes([0x41, pid]) + values[pid]
 
+    # ------------------------------------------------------------------ mode 02
+    def _snapshot(self, code: str) -> dict[int, bytes]:
+        """Freeze frame: the car was cruising at about 78 km/h when the fault was confirmed."""
+        lean = "lean" in self.faults
+        return {
+            0x02: dtc_codes.encode(code),
+            0x03: bytes([0x02, 0x00]),                      # closed loop
+            0x04: bytes([int(46 * 255 / 100)]),             # load 46 %
+            0x05: bytes([88 + 40]),                         # coolant 88 °C
+            0x06: bytes([128 + (18 if lean else 4)]),       # short term trim
+            0x07: bytes([128 + (13 if lean else 3)]),       # long term trim
+            0x0B: bytes([52]),                              # MAP 52 kPa
+            0x0C: (2350 * 4).to_bytes(2, "big"),            # 2350 rpm
+            0x0D: bytes([78]),                              # 78 km/h
+            0x0E: bytes([(14 + 64) * 2]),                   # timing advance 14°
+            0x0F: bytes([24 + 40]),                         # intake air 24 °C
+            0x10: int(13.6 * 100).to_bytes(2, "big"),       # MAF 13.6 g/s
+            0x11: bytes([int(24 * 255 / 100)]),             # throttle 24 %
+            0x1F: (812).to_bytes(2, "big"),                 # 812 s since engine start
+        }
+
+    def _mode02(self, pid: int, frame: int) -> bytes | None:
+        if frame != 0:
+            return None
+        head = bytes([0x42, pid, frame])
+        stored = self.freeze_frame or {}
+        if pid == 0x02:
+            return head + stored.get(0x02, b"\x00\x00")  # 0000 = no freeze frame stored
+        if pid == 0x00:
+            return head + self._supported_mask(0x00, set(stored) | {0x02})
+        if pid not in stored:
+            return None
+        return head + stored[pid]
+
+    # ------------------------------------------------------------------ mode 06
+    def _monitors(self) -> dict[int, list[tuple[int, int, int, int, int]]]:
+        """Monitor id -> [(test id, unit/scaling id, value, min, max)] as raw 16 bit numbers."""
+        if self.cleared_at is not None and "cleared" not in self.faults \
+                and time.monotonic() - self.cleared_at < 20:
+            return {mid: [] for mid in (0x01, 0x02, 0x21, 0x31, 0x41, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5)}
+        slow_o2 = "lazy_o2" in self.faults or "P0133" in self.stored_dtcs
+        worn_cat = "catalyst" in self.faults or "P0420" in self.stored_dtcs
+        rough = "rough_idle" in self.faults
+        ratio = lambda x: int(x * 256)  # noqa: E731 - unit 0x20: 1/256 per bit
+        return {
+            # upstream O2 sensor: switch times in ms (unit 0x10), limit 150 ms
+            0x01: [(0x05, 0x10, 168 if slow_o2 else 62, 0, 150), (0x06, 0x10, 141 if slow_o2 else 55, 0, 150)],
+            # downstream O2 sensor: maximum voltage must reach 0.6 V (unit 0x0B: mV)
+            0x02: [(0x08, 0x0B, 782, 600, 0xFFFF)],
+            # catalyst: oxygen storage ratio, limit 0.60
+            0x21: [(0x80, 0x20, ratio(0.66 if worn_cat else 0.27), 0, ratio(0.60))],
+            # EGR: pressure change must be at least 1.5 kPa (unit 0x17: 0.01 kPa)
+            0x31: [(0x81, 0x17, 420, 150, 0xFFFF)],
+            # O2 heater current 0.4-2.0 A (unit 0x0E: mA)
+            0x41: [(0x82, 0x0E, 1020, 400, 2000)],
+            # misfire counters (unit 0x24: counts)
+            0xA1: [(0x0B, 0x24, 3 if rough else 0, 0, 0xFFFF), (0x0C, 0x24, 21 if rough else 0, 0, 0xFFFF)],
+            0xA2: [(0x0B, 0x24, 0, 0, 0xFFFF), (0x0C, 0x24, 0, 0, 0xFFFF)],
+            0xA3: [(0x0B, 0x24, 0, 0, 0xFFFF), (0x0C, 0x24, 0, 0, 0xFFFF)],
+            0xA4: [(0x0B, 0x24, 3 if rough else 0, 0, 0xFFFF), (0x0C, 0x24, 21 if rough else 0, 0, 0xFFFF)],
+            0xA5: [(0x0B, 0x24, 0, 0, 0xFFFF), (0x0C, 0x24, 0, 0, 0xFFFF)],
+        }
+
+    def _mode06(self, mid: int) -> bytes | None:
+        monitors = self._monitors()
+        if mid % 0x20 == 0:
+            if mid and not any(m > mid for m in monitors):
+                return None
+            return bytes([0x46, mid]) + self._supported_mask(mid, set(monitors))
+        if mid not in monitors:
+            return None
+        out = bytes([0x46])
+        for tid, uas, value, lo, hi in monitors[mid] or [(0x0C if mid >= 0xA1 else 0x80, 0x24, 0, 0, 0)]:
+            out += bytes([mid, tid, uas]) + value.to_bytes(2, "big") + lo.to_bytes(2, "big") + hi.to_bytes(2, "big")
+        return out
+
     # ------------------------------------------------------------------ DTC / mode 09
     def _dtc_frame(self, sid: int, codes: list[str]) -> bytes:
         payload = b"".join(dtc_codes.encode(c) for c in codes)
@@ -390,6 +477,7 @@ class Elm327Emulator:
     def _clear(self) -> None:
         self.stored_dtcs.clear()
         self.pending_dtcs.clear()
+        self.freeze_frame = None
         self.distance_with_mil = 0
         self.distance_since_clear = 0
         self.warmups_since_clear = 0

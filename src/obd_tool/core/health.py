@@ -15,7 +15,8 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import Callable, Optional
 
-from .models import DtcReport, VehicleStatus
+from .diag import MISFIRE_MIDS
+from .models import DtcReport, FreezeFrame, MonitorReport, VehicleStatus
 
 # Keys sampled during the whole check
 SAMPLE_KEYS = [
@@ -46,6 +47,8 @@ class Snapshot:
     duration: float
     adapter_voltage: Optional[float] = None
     vehicle: dict = field(default_factory=dict)
+    freeze: Optional[FreezeFrame] = None       # None = not read
+    monitors: Optional[MonitorReport] = None   # None = not read
 
     def values(self, key: str) -> list[float]:
         return [v for _, v in self.samples.get(key, []) if isinstance(v, (int, float))]
@@ -75,6 +78,8 @@ class HealthReport:
     samples: int
     vehicle: dict = field(default_factory=dict)
     disclaimer: str = DISCLAIMER
+    freeze_frame: Optional[dict] = None   # FreezeFrame.to_dict() when a frame is stored
+    monitor_tests: list[dict] = field(default_factory=list)   # MonitorTest.to_dict()
 
     @property
     def counts(self) -> dict[str, int]:
@@ -82,6 +87,16 @@ class HealthReport:
         for f in self.findings:
             out[f.severity] += 1
         return out
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "HealthReport":
+        """Rebuild a report saved with to_dict() (history records)."""
+        fields = ("key", "area", "severity", "title", "detail", "value", "penalty")
+        findings = [Finding(**{k: f[k] for k in fields if k in f}) for f in data.get("findings", [])]
+        return cls(score=data["score"], grade=data["grade"], findings=findings, created=data["created"],
+                   duration=data.get("duration", 0.0), samples=data.get("samples", 0),
+                   vehicle=data.get("vehicle") or {}, disclaimer=data.get("disclaimer", DISCLAIMER),
+                   freeze_frame=data.get("freeze_frame"), monitor_tests=data.get("monitor_tests") or [])
 
     def to_dict(self) -> dict:
         return {
@@ -94,6 +109,8 @@ class HealthReport:
             "samples": self.samples,
             "vehicle": self.vehicle,
             "disclaimer": self.disclaimer,
+            "freeze_frame": self.freeze_frame,
+            "monitor_tests": self.monitor_tests,
         }
 
 
@@ -121,6 +138,14 @@ def collect(session, duration: float = 30.0, progress: Optional[ProgressFn] = No
     except Exception:  # informational only
         adapter_voltage = None
 
+    report(0.02, "Reading freeze frame and monitor tests")
+    freeze = monitors = None
+    try:
+        freeze = session.read_freeze_frame()
+        monitors = session.read_monitors()
+    except Exception:  # optional services: an ECU choking on them must not stop the check
+        pass
+
     counters = {}
     keys = [k for k in COUNTER_KEYS if k in supported]
     for r in session.read(keys) if keys else []:
@@ -145,7 +170,8 @@ def collect(session, duration: float = 30.0, progress: Optional[ProgressFn] = No
         time.sleep(max(0.0, 0.02 - (time.monotonic() - tick)))
     report(1.0, "Evaluating")
     return Snapshot(status=status, dtcs=dtcs, counters=counters, samples=samples,
-                    duration=time.monotonic() - start, adapter_voltage=adapter_voltage, vehicle=vehicle)
+                    duration=time.monotonic() - start, adapter_voltage=adapter_voltage, vehicle=vehicle,
+                    freeze=freeze, monitors=monitors)
 
 
 # --------------------------------------------------------------------------- helpers
@@ -179,9 +205,25 @@ def _rule_dtcs(s: Snapshot) -> list[Finding]:
         out.append(Finding(f"dtc_{d.code}", "Trouble codes", "warn", f"Pending code {d.code}",
                            (d.description or "Manufacturer specific code")
                            + " — detected once, not confirmed yet.", d.system, 5))
+    stored_codes = {d.code for d in stored}
+    for d in s.dtcs.permanent:
+        if d.code in stored_codes:
+            continue  # already reported as a stored code
+        out.append(Finding(f"permanent_{d.code}", "Trouble codes", "warn", f"Permanent code {d.code}",
+                           (d.description or "Manufacturer specific code")
+                           + " — the codes were cleared, but the ECU has not yet confirmed that this fault "
+                           "is gone. It disappears by itself after the monitor passes.", d.system, 5))
     if not stored and not pending and not s.status.mil:
         out.append(Finding("dtc", "Trouble codes", "ok", "No trouble codes",
                            "No stored or pending codes, MIL off."))
+    if s.freeze is not None and s.freeze.present:
+        shown = {r.key: r for r in s.freeze.readings}
+        parts = [f"{shown[k].value:g} {shown[k].unit}" for k in ("RPM", "SPEED", "COOLANT_TEMP", "ENGINE_LOAD")
+                 if k in shown and isinstance(shown[k].value, (int, float))]
+        out.append(Finding("freeze_frame", "Trouble codes", "info", f"Freeze frame stored for {s.freeze.dtc.code}",
+                           "Engine conditions when the fault was detected"
+                           + (": " + ", ".join(parts) if parts else "") + ". See the freeze frame table.",
+                           s.freeze.dtc.code))
     dist_mil = s.counters.get("DISTANCE_W_MIL")
     if dist_mil:
         out.append(Finding("distance_mil", "Trouble codes", "warn" if dist_mil > 100 else "info",
@@ -417,7 +459,49 @@ def _rule_o2(s: Snapshot) -> list[Finding]:
     return out
 
 
-RULES = [_rule_dtcs, _rule_readiness, _rule_charging, _rule_cooling, _rule_fuel_trims, _rule_idle, _rule_o2]
+def _limits(t) -> str:
+    if t.min is not None and t.max is not None:
+        return f"allowed {t.min:g}–{t.max:g}"
+    if t.max is not None:
+        return f"limit {t.max:g}"
+    if t.min is not None:
+        return f"minimum {t.min:g}"
+    return "no limit"
+
+
+def _rule_monitors(s: Snapshot) -> list[Finding]:
+    """On-board monitor test results (mode 06): failed tests, tests close to the limit, misfire counters."""
+    if s.monitors is None:
+        return []
+    if not s.monitors.supported or not s.monitors.tests:
+        return [Finding("monitor_tests", "Monitor tests", "skipped", "Monitor test results not available",
+                        "The car does not report on-board test results (mode 06), or no test has run "
+                        "since the codes were cleared.")]
+    out = []
+    unit = lambda t: f" {t.unit}" if t.unit else ""  # noqa: E731
+    for t in s.monitors.tests:
+        value = f"{t.value:g}{unit(t)}"
+        if t.status == "fail":
+            out.append(Finding(f"monitor_{t.id}", "Monitor tests", "critical", f"{t.monitor}: test failed",
+                               f"{t.name}: {value} ({_limits(t)}{unit(t)}). The ECU's own test is outside its "
+                               "limit; a trouble code follows if it fails again.", value, 10))
+        elif t.status == "near":
+            out.append(Finding(f"monitor_{t.id}", "Monitor tests", "warn", f"{t.monitor}: close to the limit",
+                               f"{t.name}: {value} ({_limits(t)}{unit(t)}), only {t.margin:.0f} % headroom left. "
+                               "No trouble code yet, but the component is wearing out.", value, 5))
+        elif t.mid in MISFIRE_MIDS and t.value > 0 and t.mid != 0xA1:
+            out.append(Finding(f"monitor_{t.id}", "Monitor tests", "warn", f"{t.monitor}: misfires counted",
+                               f"{t.name}: {t.value:g}. Check the spark plug, coil and injector of this cylinder.",
+                               f"{t.value:g}", 5))
+    if not out:
+        n = len(s.monitors.tests)
+        out.append(Finding("monitor_tests", "Monitor tests", "ok", "On-board monitor tests passed",
+                           f"{n} test results are within the ECU's limits with headroom.", f"{n}/{n}"))
+    return out
+
+
+RULES = [_rule_dtcs, _rule_readiness, _rule_monitors, _rule_charging, _rule_cooling, _rule_fuel_trims, _rule_idle,
+         _rule_o2]
 
 
 def evaluate(snapshot: Snapshot) -> HealthReport:
@@ -436,7 +520,9 @@ def evaluate(snapshot: Snapshot) -> HealthReport:
     samples = sum(len(v) for v in snapshot.samples.values())
     return HealthReport(score=score, grade=grade, findings=findings,
                         created=datetime.now().isoformat(timespec="seconds"),
-                        duration=snapshot.duration, samples=samples, vehicle=snapshot.vehicle)
+                        duration=snapshot.duration, samples=samples, vehicle=snapshot.vehicle,
+                        freeze_frame=snapshot.freeze.to_dict() if snapshot.freeze and snapshot.freeze.present else None,
+                        monitor_tests=[t.to_dict() for t in snapshot.monitors.tests] if snapshot.monitors else [])
 
 
 def run_check(session, duration: float = 30.0, progress: Optional[ProgressFn] = None) -> HealthReport:

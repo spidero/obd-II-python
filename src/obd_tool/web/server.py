@@ -9,17 +9,20 @@ import threading
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from pathlib import Path
-from typing import Optional
+from typing import Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .. import __version__
+from .. import __version__, about
 from ..core import DEFAULT_DASHBOARD, ConnectionSettings, ObdError, ObdSession, find_ports
 from ..core.health import HealthReport, run_check
+from ..core.pids import DEFAULT_TILES
 from ..core.report_html import render_html
+from ..core.storage import FUELS, Storage, StorageError
+from ..core.trip import LiveReader, TripComputer
 
 log = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).parent / "static"
@@ -28,9 +31,12 @@ STATIC_DIR = Path(__file__).parent / "static"
 class AppState:
     """Holds the single OBD session shared by all clients."""
 
-    def __init__(self, settings: ConnectionSettings):
+    def __init__(self, settings: ConnectionSettings, storage: Optional[Storage] = None):
         self.settings = settings
+        self.storage = storage or Storage()
+        self.trip = TripComputer(fuel=self.storage.active().get("fuel", "petrol"))
         self.session = ObdSession(settings)
+        self.reader = LiveReader(self.session, self.trip)
         self.state = "disconnected"  # disconnected | connecting | connected | error
         self.error: Optional[str] = None
         self._lock = threading.Lock()
@@ -43,6 +49,7 @@ class AppState:
                 self.settings = settings
                 self.session.close()
                 self.session = ObdSession(settings)
+            self.reader = LiveReader(self.session, self.trip)
             self.state, self.error = "connecting", None
         try:
             self.session.connect()
@@ -50,7 +57,26 @@ class AppState:
             log.warning("Connect failed: %s", e)
             self.state, self.error = "error", str(e)
             raise
+        self.reader = LiveReader(self.session, self.trip)
+        self._remember_vehicle()
         self.state = "connected"
+
+    def _remember_vehicle(self) -> None:
+        """Pick the profile of the connected car and note the settings that worked."""
+        try:
+            vehicle = self.storage.select_for_vin(self.session.vin(), simulated=self.session.simulated)
+            info = self.session.adapter_info()
+            if not self.session.simulated:
+                self.storage.update(vehicle["id"], connection={
+                    "port": info.port, "baudrate": self.settings.baudrate, "protocol": info.protocol_id,
+                    "protocol_name": info.protocol})
+            self.trip.fuel = vehicle.get("fuel", "petrol")
+        except Exception as e:  # profiles are a convenience, never a reason to fail the connection
+            log.warning("Could not update the vehicle profile: %s", e)
+
+    @property
+    def vehicle(self) -> dict:
+        return self.storage.active()
 
     def disconnect(self) -> None:
         self.session.close()
@@ -70,6 +96,7 @@ class AppState:
             "error": self.error,
             "settings": {"port": s.port, "baudrate": s.baudrate, "protocol": s.protocol, "simulate": s.simulate},
             "version": __version__,
+            "vehicle": self.vehicle,
         }
 
 
@@ -84,8 +111,54 @@ class ClearRequest(BaseModel):
     confirm: bool = False
 
 
-def create_app(settings: Optional[ConnectionSettings] = None, connect: bool = True) -> FastAPI:
-    state = AppState(settings or ConnectionSettings())
+class TileConfig(BaseModel):
+    type: str = "value"   # value | gauge | chart
+    min: Optional[float] = None
+    max: Optional[float] = None
+    warn_low: Optional[float] = None
+    warn_high: Optional[float] = None
+    alarm_low: Optional[float] = None
+    alarm_high: Optional[float] = None
+
+
+class DashboardLayout(BaseModel):
+    keys: List[str] = []
+    tiles: Dict[str, TileConfig] = {}
+    sound: bool = False
+
+
+class VehicleRequest(BaseModel):
+    name: Optional[str] = None
+    vin: Optional[str] = None
+    fuel: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class TripResetRequest(BaseModel):
+    save: bool = True
+
+
+def _health_summary(report: dict) -> str:
+    counts = report.get("counts", {})
+    parts = [f"{counts[k]} {label}" for k, label in (("critical", "critical"), ("warn", "warnings")) if counts.get(k)]
+    return f"{report['score']}/100 {report['grade']}" + (" · " + ", ".join(parts) if parts else "")
+
+
+def backup_before_clear(session: ObdSession, storage: Storage) -> Optional[dict]:
+    """Save the codes and the freeze frame to the history; clearing erases them from the car."""
+    dtcs = session.read_dtcs()
+    freeze = session.read_freeze_frame()
+    if not dtcs.total and not dtcs.permanent and not freeze.present:
+        return None
+    codes = [d.code for d in dtcs.stored + dtcs.pending]
+    summary = "Before clearing: " + (", ".join(codes) if codes else "no stored codes")
+    return storage.add_record(storage.active()["id"], "dtc-backup", summary,
+                              {"dtcs": dtcs.to_dict(), "freeze_frame": freeze.to_dict()})
+
+
+def create_app(settings: Optional[ConnectionSettings] = None, connect: bool = True,
+               storage: Optional[Storage] = None) -> FastAPI:
+    state = AppState(settings or ConnectionSettings(), storage)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -143,23 +216,33 @@ def create_app(settings: Optional[ConnectionSettings] = None, connect: bool = Tr
     @app.get("/api/params")
     def get_params():
         def work(s: ObdSession):
-            params = [p.to_dict() for p in s.supported_params()]
+            params = [p.to_dict() for p in state.reader.params()]
             keys = {p["key"] for p in params}
-            return {"params": params, "default": [k for k in DEFAULT_DASHBOARD if k in keys]}
+            return {"params": params, "default": [k for k in DEFAULT_DASHBOARD if k in keys],
+                    "tiles": {k: v for k, v in DEFAULT_TILES.items() if k in keys}}
         return guarded(work)
 
     @app.get("/api/read")
     def get_read(keys: str):
         wanted = [k.strip().upper() for k in keys.split(",") if k.strip()]
-        return guarded(lambda s: {"readings": [r.to_dict() for r in s.read(wanted)]})
+        return guarded(lambda s: {"readings": [r.to_dict() for r in state.reader.read(wanted)]})
 
     @app.get("/api/dtc")
     def get_dtc():
         def work(s: ObdSession):
             data = s.read_dtcs().to_dict()
             data["status"] = s.status().to_dict()
+            data["freeze_frame"] = s.read_freeze_frame().to_dict()
             return data
         return guarded(work)
+
+    @app.get("/api/freeze-frame")
+    def get_freeze_frame():
+        return guarded(lambda s: s.read_freeze_frame().to_dict())
+
+    @app.get("/api/monitors")
+    def get_monitors():
+        return guarded(lambda s: s.read_monitors().to_dict())
 
     @app.post("/api/dtc/clear")
     def post_clear(req: ClearRequest):
@@ -167,9 +250,110 @@ def create_app(settings: Optional[ConnectionSettings] = None, connect: bool = Tr
             raise HTTPException(400, detail="Clearing codes requires confirmation (confirm: true)")
 
         def work(s: ObdSession):
+            backup = backup_before_clear(s, state.storage)
             s.clear_dtcs()
-            return s.read_dtcs().to_dict()
+            data = s.read_dtcs().to_dict()
+            data["backup"] = backup
+            return data
         return guarded(work)
+
+    # ------------------------------------------------------------------ dashboard, trip
+    @app.get("/api/dashboard")
+    def get_dashboard():
+        return {"layout": state.storage.dashboard(state.vehicle["id"])}
+
+    @app.put("/api/dashboard")
+    def put_dashboard(layout: DashboardLayout):
+        if len(layout.keys) > 60 or any(t.type not in ("value", "gauge", "chart") for t in layout.tiles.values()):
+            raise HTTPException(400, detail="Invalid dashboard layout")
+        data = layout.model_dump()
+        data["keys"] = [k.upper() for k in data["keys"]]
+        return {"layout": state.storage.save_dashboard(state.vehicle["id"], data)}
+
+    @app.get("/api/trip")
+    def get_trip():
+        return state.trip.summary()
+
+    @app.post("/api/trip/reset")
+    def post_trip_reset(req: TripResetRequest):
+        summary = state.trip.summary()
+        record = None
+        if req.save and (summary["distance_km"] or 0) >= 0.1:
+            avg = summary["average_l_100km"]
+            text = f"{summary['distance_km']:.1f} km" + (f" · {avg:.1f} l/100 km" if avg is not None else "")
+            record = state.storage.add_record(state.vehicle["id"], "trip", text, summary)
+        state.trip.reset()
+        return {"saved": record, "trip": state.trip.summary()}
+
+    # ------------------------------------------------------------------ vehicles, history
+    def stored(fn, *args):
+        try:
+            return fn(*args)
+        except StorageError as e:
+            raise HTTPException(404, detail=str(e))
+
+    def check_fuel(req: VehicleRequest) -> None:
+        if req.fuel is not None and req.fuel not in FUELS:
+            raise HTTPException(400, detail=f"Fuel must be one of: {', '.join(FUELS)}")
+
+    @app.get("/api/vehicles")
+    def get_vehicles():
+        active = state.vehicle
+        return {"vehicles": state.storage.vehicles(), "active": active["id"], "fuels": list(FUELS)}
+
+    @app.post("/api/vehicles")
+    def post_vehicle(req: VehicleRequest):
+        check_fuel(req)
+        vehicle = state.storage.create(req.name or "New car", vin=req.vin, fuel=req.fuel or "petrol",
+                                       notes=req.notes or "")
+        state.trip.fuel = vehicle["fuel"]
+        return vehicle
+
+    @app.put("/api/vehicles/{vehicle_id}")
+    def put_vehicle(vehicle_id: str, req: VehicleRequest):
+        check_fuel(req)
+        vehicle = stored(lambda: state.storage.update(vehicle_id, **req.model_dump()))
+        if vehicle["id"] == state.vehicle["id"]:
+            state.trip.fuel = vehicle["fuel"]
+        return vehicle
+
+    @app.post("/api/vehicles/{vehicle_id}/activate")
+    def post_vehicle_activate(vehicle_id: str):
+        vehicle = stored(state.storage.activate, vehicle_id)
+        state.trip.fuel = vehicle["fuel"]
+        return vehicle
+
+    @app.delete("/api/vehicles/{vehicle_id}")
+    def delete_vehicle(vehicle_id: str):
+        stored(state.storage.delete, vehicle_id)
+        state.trip.fuel = state.vehicle["fuel"]
+        return get_vehicles()
+
+    @app.get("/api/history")
+    def get_history(kind: Optional[str] = None):
+        return {"vehicle": state.vehicle, "records": state.storage.records(state.vehicle["id"], kind)}
+
+    @app.get("/api/history/{record_id}")
+    def get_history_record(record_id: str):
+        return stored(state.storage.record, state.vehicle["id"], record_id)
+
+    @app.delete("/api/history/{record_id}")
+    def delete_history_record(record_id: str):
+        stored(state.storage.delete_record, state.vehicle["id"], record_id)
+        return {"deleted": record_id}
+
+    @app.get("/api/history/{record_id}/report.html", response_class=HTMLResponse)
+    def get_history_html(record_id: str):
+        record = stored(state.storage.record, state.vehicle["id"], record_id)
+        if record.get("kind") != "health":
+            raise HTTPException(404, detail="Not a health report")
+        return HTMLResponse(render_html(HealthReport.from_dict(record["data"])))
+
+    @app.get("/api/about")
+    def get_about():
+        return {"version": __version__, "repo": about.REPO_URL, "issues": about.ISSUES_URL,
+                "support": about.SUPPORT_LINKS, "adapters": about.ADAPTERS, "vehicles": about.VEHICLES_NOTE,
+                "data_dir": str(state.storage.root)}
 
     @app.get("/api/health/last")
     def get_health_last():
@@ -225,7 +409,12 @@ def create_app(settings: Optional[ConnectionSettings] = None, connect: bool = Tr
                 await asyncio.sleep(0)  # let queued progress messages go out first
                 forwarder.cancel()
             state.last_report = report
-            await ws.send_json({"report": report.to_dict()})
+            data = report.to_dict()
+            try:
+                data["record"] = state.storage.add_record(state.vehicle["id"], "health", _health_summary(data), data)
+            except OSError as e:  # read-only data directory: the report is still shown
+                log.warning("Could not save the health report: %s", e)
+            await ws.send_json({"report": data})
             await ws.close()
         except (WebSocketDisconnect, RuntimeError):
             pass
@@ -250,9 +439,10 @@ def create_app(settings: Optional[ConnectionSettings] = None, connect: bool = Tr
                 started = asyncio.get_running_loop().time()
                 if config["keys"]:
                     try:
-                        session = state.check()
-                        readings = await asyncio.to_thread(session.read, list(config["keys"]))
-                        await ws.send_json({"readings": [r.to_dict() for r in readings]})
+                        state.check()
+                        readings = await asyncio.to_thread(state.reader.read, list(config["keys"]))
+                        await ws.send_json({"readings": [r.to_dict() for r in readings],
+                                            "trip": state.trip.summary()})
                     except HTTPException as e:
                         await ws.send_json({"error": e.detail, "state": state.state})
                         await asyncio.sleep(1.0)

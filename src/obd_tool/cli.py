@@ -1,4 +1,4 @@
-"""Command line interface: obd-tool info | live | dtc | clear | pids | ports | sim | web | gui."""
+"""Command line interface: obd-tool info | live | dtc | tests | clear | health | history | pids | ports | sim | web | gui."""
 
 from __future__ import annotations
 
@@ -43,6 +43,28 @@ def _open(ctx: typer.Context) -> ObdSession:
 def _fail(e: Exception) -> None:
     err.print(f"[bold red]Error:[/] {e}")
     raise typer.Exit(2)
+
+
+def _storage():
+    from .core.storage import Storage
+
+    return Storage()
+
+
+def _reader(session: ObdSession):
+    """Live reader with the trip computer set to the active vehicle's fuel."""
+    from .core.trip import LiveReader, TripComputer
+
+    vehicle = _select_vehicle(session)
+    return LiveReader(session, TripComputer(fuel=vehicle.get("fuel", "petrol") if vehicle else "petrol"))
+
+
+def _select_vehicle(session: ObdSession):
+    """Activate the profile of the connected car (the simulator has its own). None if storage fails."""
+    try:
+        return _storage().select_for_vin(session.vin(), simulated=session.simulated)
+    except (OSError, ObdError):
+        return None
 
 
 def _version(value: bool):
@@ -132,7 +154,7 @@ def pids(ctx: typer.Context):
     """Live parameters supported by the car."""
     try:
         with _open(ctx) as s:
-            params = s.supported_params()
+            params = _reader(s).params()
     except ObdError as e:
         _fail(e)
     t = Table(title=f"Supported parameters ({len(params)})")
@@ -166,8 +188,9 @@ def live(
         _fail(e)
     writer = None
     csv_file = None
+    reader = _reader(session)
     try:
-        supported = {p.key for p in session.supported_params()}
+        supported = {p.key for p in reader.params()}
         if keys:
             keys = [k.upper() for k in keys]
         else:
@@ -194,7 +217,7 @@ def live(
         with Live(console=console, auto_refresh=False) as view:
             while count == 0 or n < count:
                 started = time.monotonic()
-                readings = session.read(keys)
+                readings = reader.read(keys)
                 n += 1
                 view.update(render(readings, n), refresh=True)
                 if writer:
@@ -211,13 +234,18 @@ def live(
         if csv_file:
             csv_file.close()
             console.print(f"Saved: {csv_path}")
+        trip = reader.trip.summary()
+        if (trip["distance_km"] or 0) >= 0.1:
+            avg = trip["average_l_100km"]
+            console.print(f"Trip: {trip['distance_km']:.1f} km in {trip['duration_s'] / 60:.0f} min"
+                          + (f", {trip['fuel_l']:.2f} l, {avg:.1f} l/100 km" if avg is not None else ""))
 
 
 def _print_dtcs(report) -> None:
     if not report.total:
         console.print("[green]No trouble codes[/] (stored or pending).")
-        return
-    for title, items in (("Stored (confirmed)", report.stored), ("Pending", report.pending)):
+    for title, items in (("Stored (confirmed)", report.stored), ("Pending", report.pending),
+                         ("Permanent (cannot be cleared, go away once the fault is proven fixed)", report.permanent)):
         if not items:
             continue
         t = Table(title=title)
@@ -229,23 +257,90 @@ def _print_dtcs(report) -> None:
         console.print(t)
 
 
+def _print_freeze(frame) -> None:
+    if not frame.supported:
+        console.print("[dim]Freeze frame: not supported by the car.[/]")
+        return
+    if not frame.present:
+        console.print("[dim]Freeze frame: none stored.[/]")
+        return
+    t = Table(title=f"Freeze frame for {frame.dtc.code} – engine conditions when the fault was detected")
+    t.add_column("Parameter")
+    t.add_column("Value", justify="right", style="bold cyan")
+    t.add_column("Unit")
+    for r in frame.readings:
+        t.add_row(r.label, _fmt(r.value), r.unit)
+    console.print(t)
+
+
 @app.command()
-def dtc(ctx: typer.Context):
-    """Read trouble codes (stored and pending)."""
+def dtc(
+    ctx: typer.Context,
+    json_out: bool = typer.Option(False, "--json", help="Print the codes and the freeze frame as JSON."),
+):
+    """Read trouble codes (stored, pending, permanent) and the freeze frame."""
+    import json as jsonlib
+
     try:
         with _open(ctx) as s:
             status = s.status()
             report = s.read_dtcs()
+            frame = s.read_freeze_frame()
     except ObdError as e:
         _fail(e)
+    if json_out:
+        data = report.to_dict()
+        data.update(mil=status.mil, freeze_frame=frame.to_dict())
+        console.print_json(jsonlib.dumps(data))
+        return
     console.print("MIL (check engine): " + ("[bold red]ON[/]" if status.mil else "[green]off[/]"))
     _print_dtcs(report)
+    _print_freeze(frame)
+
+
+TEST_STYLE = {"pass": "[green]pass[/]", "near": "[bold yellow]near limit[/]", "fail": "[bold red]FAIL[/]"}
+
+
+@app.command()
+def tests(
+    ctx: typer.Context,
+    json_out: bool = typer.Option(False, "--json", help="Print the results as JSON."),
+):
+    """On-board monitor test results (mode 06): measured values against the ECU's limits."""
+    import json as jsonlib
+
+    try:
+        with _open(ctx) as s:
+            report = s.read_monitors()
+    except ObdError as e:
+        _fail(e)
+    if json_out:
+        console.print_json(jsonlib.dumps(report.to_dict()))
+        return
+    if not report.supported:
+        console.print("The car does not report monitor test results (mode 06 needs a CAN protocol).")
+        raise typer.Exit(1)
+    if not report.tests:
+        console.print("No test results yet – the monitors have not run since the codes were cleared.")
+        return
+    t = Table(title=f"Monitor tests ({len(report.tests)})")
+    for col, kw in (("Monitor", {}), ("Test", {}), ("Value", {"justify": "right"}), ("Min", {"justify": "right"}),
+                    ("Max", {"justify": "right"}), ("Unit", {}), ("Headroom", {"justify": "right"}), ("Result", {})):
+        t.add_column(col, **kw)
+    for x in report.tests:
+        t.add_row(x.monitor, x.name, _fmt(x.value), _fmt(x.min), _fmt(x.max), x.unit,
+                  f"{x.margin:.0f} %" if x.margin is not None else "—", TEST_STYLE[x.status])
+    console.print(t)
+    failed, near = report.count("fail"), report.count("near")
+    if failed or near:
+        console.print(f"[yellow]{failed} failed, {near} close to the limit.[/]")
 
 
 CLEAR_WARNING = (
     "Clearing codes (mode 04) erases stored and pending codes and freeze frame data,\n"
-    "and resets the readiness monitors. Until the monitors complete again (a few drive\n"
-    "cycles) the car may fail an emissions inspection."
+    "and resets the readiness monitors and monitor test results. Until the monitors\n"
+    "complete again (a few drive cycles) the car may fail an emissions inspection.\n"
+    "The codes and the freeze frame are saved to the history first."
 )
 
 
@@ -263,6 +358,19 @@ def clear(
             if not yes and not typer.confirm("Clear trouble codes?", default=False):
                 console.print("Cancelled.")
                 raise typer.Exit(1)
+            from .web.server import backup_before_clear
+
+            try:
+                storage = _storage()
+                storage.select_for_vin(s.vin(), simulated=s.simulated)
+                backup = backup_before_clear(s, storage)
+                if backup:
+                    console.print(f"Backup saved: {storage.record_path(storage.active()['id'], backup['id'])}")
+            except OSError as e:
+                err.print(f"[yellow]Could not save a backup of the codes:[/] {e}")
+                if not yes and not typer.confirm("Clear anyway?", default=False):
+                    console.print("Cancelled.")
+                    raise typer.Exit(1)
             s.clear_dtcs()
             after = s.read_dtcs()
     except ObdError as e:
@@ -289,6 +397,7 @@ def health(
     duration: float = typer.Option(30.0, "--duration", "-d", min=3, help="Sampling time [s]."),
     json_out: bool = typer.Option(False, "--json", help="Print the report as JSON."),
     html: Optional[Path] = typer.Option(None, "--html", help="Save the report as an HTML file."),
+    save: bool = typer.Option(True, "--save/--no-save", help="Keep the report in the vehicle history."),
 ):
     """Health check: sample live data and rate the car's condition (engine running and warm)."""
     import json as jsonlib
@@ -308,6 +417,8 @@ def health(
             task = bar.add_task("Starting", total=1.0)
             report = run_check(session, duration,
                                lambda f, msg: bar.update(task, completed=f, description=msg))
+        if save:
+            _select_vehicle(session)
     except ObdError as e:
         _fail(e)
     finally:
@@ -315,6 +426,16 @@ def health(
 
     if html:
         html.write_text(render_html(report), encoding="utf-8")
+    saved = None
+    if save:
+        try:
+            storage = _storage()
+            from .web.server import _health_summary
+
+            data = report.to_dict()
+            saved = storage.add_record(storage.active()["id"], "health", _health_summary(data), data)
+        except OSError as e:
+            err.print(f"[yellow]Could not save the report to the history:[/] {e}")
     if json_out:
         console.print_json(jsonlib.dumps(report.to_dict()))
         return
@@ -334,6 +455,40 @@ def health(
     console.print(f"[dim]{report.disclaimer}[/]")
     if html:
         console.print(f"Saved: {html}")
+    if saved:
+        console.print(f"[dim]Saved to the history as {saved['id']} (see `obd-tool history`).[/]")
+
+
+@app.command()
+def history(
+    record: Optional[str] = typer.Argument(None, help="Record id to print as JSON (default: list the records)."),
+    kind: Optional[str] = typer.Option(None, "--kind", "-k", help="Only this kind: health, dtc-backup or trip."),
+):
+    """Saved health reports, pre-clear backups and trips of the active vehicle."""
+    import json as jsonlib
+
+    from .core.storage import StorageError
+
+    storage = _storage()
+    vehicle = storage.active()
+    if record:
+        try:
+            console.print_json(jsonlib.dumps(storage.record(vehicle["id"], record)))
+        except StorageError as e:
+            _fail(e)
+        return
+    records = storage.records(vehicle["id"], kind)
+    console.print(f"Vehicle: [bold]{vehicle['name']}[/]" + (f" (VIN {vehicle['vin']})" if vehicle.get("vin") else "")
+                  + f"  ·  {storage.root}")
+    if not records:
+        console.print("No records yet.")
+        return
+    t = Table()
+    for col in ("Id", "Date", "Kind", "Summary"):
+        t.add_column(col)
+    for r in records:
+        t.add_row(r["id"], r["created"].replace("T", " "), r["kind"], r["summary"])
+    console.print(t)
 
 
 @app.command()

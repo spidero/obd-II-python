@@ -16,13 +16,18 @@
     <nav class="tabs" role="tablist">
       <button role="tab" data-tab="dash" aria-selected="true">Dashboard</button>
       <button role="tab" data-tab="dtc">Trouble codes <span class="badge" id="dtc-badge" hidden></span></button>
+      <button role="tab" data-tab="tests">Monitor tests</button>
       <button role="tab" data-tab="health">Health check</button>
+      <button role="tab" data-tab="history">History</button>
       <button role="tab" data-tab="info">Vehicle info</button>
       <button role="tab" data-tab="conn">Connection</button>
     </nav>
     <div class="conn-pill" id="conn-pill" data-state="disconnected" title="Connection state">
       <span class="dot"></span><span id="conn-text">Disconnected</span>
     </div>
+    <button class="icon-btn" id="btn-about" title="About &amp; support" aria-label="About and support">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>
+    </button>
   </header>
 
   <main>
@@ -42,9 +47,20 @@
           <span class="muted" id="rate"></span>
         </div>
         <div class="toolbar-group">
+          <button class="btn" id="btn-sound" aria-pressed="false" title="Beep when a value reaches its alarm limit">Alarm sound: off</button>
           <button class="btn" id="btn-record">● Record CSV</button>
           <button class="btn" id="btn-params">Parameters…</button>
         </div>
+      </div>
+      <div class="trip" id="trip" hidden>
+        <div class="trip-item"><span>Trip distance</span><b id="trip-distance">—</b></div>
+        <div class="trip-item"><span>Fuel used</span><b id="trip-fuel">—</b></div>
+        <div class="trip-item"><span>Average</span><b id="trip-avg">—</b></div>
+        <div class="trip-item"><span>Time</span><b id="trip-time">—</b></div>
+        <div class="trip-item"><span>Standing</span><b id="trip-idle">—</b></div>
+        <span class="spacer"></span>
+        <span class="muted" id="trip-note"></span>
+        <button class="btn" id="btn-trip-reset" title="Save the trip to the history and start a new one">Save &amp; reset trip</button>
       </div>
       <div class="grid" id="tiles"></div>
       <p class="empty" id="dash-empty" hidden>Connect to the car to see live data.</p>
@@ -65,6 +81,21 @@
         </div>
       </div>
       <div id="dtc-list"><p class="empty">Click “Read codes”.</p></div>
+    </section>
+
+    <!-- Monitor tests -->
+    <section id="tab-tests" class="tab">
+      <div class="toolbar">
+        <div class="toolbar-group">
+          <h2>On-board monitor tests</h2>
+          <div class="chips" id="tests-chips"></div>
+        </div>
+        <div class="toolbar-group"><button class="btn" id="btn-tests">Read test results</button></div>
+      </div>
+      <p class="muted intro">The ECU tests the catalyst, O2 sensors, EGR and misfires by itself while you drive.
+        These are its measured values against its own limits (OBD mode 06) — a test close to the limit shows a
+        part wearing out <strong>before</strong> a trouble code appears.</p>
+      <div id="tests-list"><p class="empty">Click “Read test results”.</p></div>
     </section>
 
     <!-- Health check -->
@@ -92,6 +123,68 @@
         </div>
       </div>
       <div id="health-result"></div>
+    </section>
+
+    <!-- History -->
+    <section id="tab-history" class="tab">
+      <div class="cards">
+        <div class="card">
+          <h3>Vehicle profile</h3>
+          <div class="row">
+            <label class="field">Active vehicle
+              <select id="veh-select"></select>
+            </label>
+            <div class="actions veh-actions">
+              <button class="btn" type="button" id="btn-veh-new">New…</button>
+              <button class="btn btn-danger" type="button" id="btn-veh-delete">Delete</button>
+            </div>
+          </div>
+          <form id="veh-form">
+            <div class="row">
+              <label class="field">Name <input id="veh-name" maxlength="60" autocomplete="off"></label>
+              <label class="field">Fuel
+                <select id="veh-fuel">
+                  <option value="petrol">Petrol</option>
+                  <option value="diesel">Diesel</option>
+                  <option value="lpg">LPG</option>
+                </select>
+              </label>
+            </div>
+            <label class="field">VIN <input id="veh-vin" maxlength="17" placeholder="filled in automatically when the car reports it" autocomplete="off"></label>
+            <label class="field">Notes <input id="veh-notes" maxlength="300" autocomplete="off"></label>
+            <div class="actions">
+              <button class="btn btn-primary" type="submit">Save profile</button>
+              <span class="muted" id="veh-meta"></span>
+            </div>
+          </form>
+        </div>
+        <div class="card">
+          <h3>What is kept here</h3>
+          <p class="muted">Each vehicle has its own dashboard layout and history: health reports, the codes and
+            freeze frame saved automatically <strong>before clearing</strong>, and saved trips.
+            Tick two health reports to compare them, for example before and after a repair.</p>
+          <p class="muted" id="hist-dir"></p>
+        </div>
+      </div>
+      <div class="toolbar">
+        <div class="toolbar-group">
+          <h2>Records</h2>
+          <label class="field-inline">Show
+            <select id="hist-kind">
+              <option value="">all</option>
+              <option value="health">health reports</option>
+              <option value="dtc-backup">pre-clear backups</option>
+              <option value="trip">trips</option>
+            </select>
+          </label>
+        </div>
+        <div class="toolbar-group">
+          <button class="btn" id="btn-hist-compare" disabled>Compare 2 reports</button>
+          <button class="btn" id="btn-hist-refresh">Refresh</button>
+        </div>
+      </div>
+      <div id="hist-compare"></div>
+      <div id="hist-list"><p class="empty">No records yet.</p></div>
     </section>
 
     <!-- Info -->
@@ -152,6 +245,15 @@
           </div>
           <p class="error" id="conn-error" hidden></p>
         </form>
+        <div class="last-conn" id="last-conn" hidden>
+          <span class="muted" id="last-conn-text"></span>
+          <button class="btn" type="button" id="btn-last-conn">Use these settings</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Supported adapters</h3>
+        <div class="table-wrap"><table class="table wrap" id="adapters-table"><tbody><tr><td class="muted">Loading…</td></tr></tbody></table></div>
+        <p class="muted" id="adapters-note"></p>
       </div>
     </section>
   </main>
@@ -170,14 +272,94 @@
     </form>
   </dialog>
 
+  <!-- Tile settings -->
+  <dialog id="dlg-tile">
+    <form method="dialog" class="dialog">
+      <h3 id="tile-title">Tile</h3>
+      <label class="field">Display
+        <select id="tile-type">
+          <option value="value">Number with history line</option>
+          <option value="gauge">Gauge</option>
+          <option value="chart">Large chart</option>
+        </select>
+      </label>
+      <div class="row">
+        <label class="field">Scale from <input type="number" step="any" id="tile-min"></label>
+        <label class="field">Scale to <input type="number" step="any" id="tile-max"></label>
+      </div>
+      <div class="row">
+        <label class="field">Warn below <input type="number" step="any" id="tile-warn_low"></label>
+        <label class="field">Warn above <input type="number" step="any" id="tile-warn_high"></label>
+      </div>
+      <div class="row">
+        <label class="field">Alarm below <input type="number" step="any" id="tile-alarm_low"></label>
+        <label class="field">Alarm above <input type="number" step="any" id="tile-alarm_high"></label>
+      </div>
+      <p class="muted">Leave a field empty to switch that limit off. You can also drag tiles to reorder them.</p>
+      <div class="actions">
+        <button class="btn" type="button" id="btn-tile-left" title="Move earlier">← Move</button>
+        <button class="btn" type="button" id="btn-tile-right" title="Move later">Move →</button>
+        <button class="btn" type="button" id="btn-tile-reset">Defaults</button>
+        <span class="spacer"></span>
+        <button class="btn" value="cancel">Cancel</button>
+        <button class="btn btn-primary" value="ok">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- History record -->
+  <dialog id="dlg-record">
+    <form method="dialog" class="dialog">
+      <h3 id="record-title">Record</h3>
+      <div class="record-body" id="record-body"></div>
+      <div class="actions"><span class="spacer"></span><button class="btn btn-primary" value="ok">Close</button></div>
+    </form>
+  </dialog>
+
+  <!-- New vehicle -->
+  <dialog id="dlg-vehicle">
+    <form method="dialog" class="dialog">
+      <h3>New vehicle profile</h3>
+      <label class="field">Name <input id="new-veh-name" maxlength="60" placeholder="e.g. Golf 1.4 TSI" autocomplete="off"></label>
+      <label class="field">Fuel
+        <select id="new-veh-fuel">
+          <option value="petrol">Petrol</option>
+          <option value="diesel">Diesel</option>
+          <option value="lpg">LPG</option>
+        </select>
+      </label>
+      <div class="actions"><span class="spacer"></span>
+        <button class="btn" value="cancel">Cancel</button>
+        <button class="btn btn-primary" value="ok">Create</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- About & support -->
+  <dialog id="dlg-about">
+    <form method="dialog" class="dialog">
+      <h3>OBD Tool <span class="muted" id="about-version"></span></h3>
+      <p>Open source OBD-II workshop tool: live data, trouble codes, monitor tests and a vehicle health check.
+        No account, no ads, works offline.</p>
+      <div class="support" id="about-support">
+        <h4>Support the project</h4>
+        <p id="about-support-text"></p>
+        <div class="actions" id="about-support-links"></div>
+      </div>
+      <dl id="about-links"></dl>
+      <div class="actions"><span class="spacer"></span><button class="btn btn-primary" value="ok">Close</button></div>
+    </form>
+  </dialog>
+
   <!-- Clear DTC confirmation -->
   <dialog id="dlg-clear">
     <form method="dialog" class="dialog">
       <h3>Clear trouble codes?</h3>
       <p>Clearing (mode 04) erases stored and pending codes and freeze frame data,
-        and <strong>resets the readiness monitors</strong>. Until the monitors complete again
-        (a few drive cycles) the car may fail an emissions inspection.</p>
-      <p>If the fault is still present, the code will come back.</p>
+        and <strong>resets the readiness monitors</strong> and monitor test results. Until the monitors
+        complete again (a few drive cycles) the car may fail an emissions inspection.</p>
+      <p>If the fault is still present, the code will come back. The codes and the freeze frame are saved
+        to the History tab first.</p>
       <label class="check"><input type="checkbox" id="clear-ack"> I understand, clear the codes</label>
       <div class="actions">
         <span class="spacer"></span>

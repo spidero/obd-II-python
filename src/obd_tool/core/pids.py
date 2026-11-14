@@ -75,6 +75,34 @@ DEFAULT_DASHBOARD = [
     "O2_B1S1",
 ]
 
+# Dashboard gauge range and alert limits: key -> dict with any of
+# min, max (gauge scale), warn_low, warn_high, alarm_low, alarm_high.
+# Rules of thumb for a petrol car; every value can be changed per tile in the UI.
+DEFAULT_TILES: dict[str, dict] = {
+    "RPM": {"min": 0, "max": 7000, "warn_high": 5500, "alarm_high": 6500},
+    "SPEED": {"min": 0, "max": 220},
+    "COOLANT_TEMP": {"min": 40, "max": 130, "warn_high": 105, "alarm_high": 110},
+    "OIL_TEMP": {"min": 40, "max": 160, "warn_high": 130, "alarm_high": 145},
+    "INTAKE_TEMP": {"min": -20, "max": 80},
+    "ENGINE_LOAD": {"min": 0, "max": 100},
+    "THROTTLE_POS": {"min": 0, "max": 100},
+    "INTAKE_PRESSURE": {"min": 0, "max": 255},
+    "TIMING_ADVANCE": {"min": -20, "max": 60},
+    "MAF": {"min": 0, "max": 200},
+    "SHORT_FUEL_TRIM_1": {"min": -25, "max": 25, "warn_low": -15, "warn_high": 15},
+    "LONG_FUEL_TRIM_1": {"min": -25, "max": 25, "warn_low": -10, "warn_high": 10, "alarm_low": -20, "alarm_high": 20},
+    "SHORT_FUEL_TRIM_2": {"min": -25, "max": 25, "warn_low": -15, "warn_high": 15},
+    "LONG_FUEL_TRIM_2": {"min": -25, "max": 25, "warn_low": -10, "warn_high": 10, "alarm_low": -20, "alarm_high": 20},
+    "CONTROL_MODULE_VOLTAGE": {"min": 10, "max": 16, "warn_low": 12.0, "alarm_low": 11.5,
+                               "warn_high": 15.0, "alarm_high": 15.5},
+    "O2_B1S1": {"min": 0, "max": 1.2},
+    "O2_B1S2": {"min": 0, "max": 1.2},
+    "FUEL_LEVEL": {"min": 0, "max": 100, "warn_low": 12, "alarm_low": 6},
+    "FUEL_FLOW": {"min": 0, "max": 30},
+    "FUEL_ECONOMY": {"min": 0, "max": 30},
+    "TRIP_ECONOMY": {"min": 0, "max": 20},
+}
+
 # Commands that are not live values (bitmasks, status, freeze frame...).
 NOT_LIVE = {
     "PIDS_A", "PIDS_B", "PIDS_C", "STATUS", "FREEZE_DTC", "STATUS_DRIVE_CYCLE", "MAX_VALUES",
@@ -102,6 +130,20 @@ UNIT_NAMES = {
     "count": "",
     "liters_per_hour": "l/h",
     "dimensionless": "",
+    "millivolt": "mV",
+    "millisecond": "ms",
+    "ampere": "A",
+    "milliampere": "mA",
+    "celsius": "°C",
+    "degC": "°C",
+    "hertz": "Hz",
+    "ohm": "Ω",
+    "kiloohm": "kΩ",
+    "ppm": "ppm",
+    "gram": "g",
+    "milligram": "mg",
+    "newton_meter": "Nm",
+    "inch_H2O_39": "inH2O",
 }
 
 # Names of OBD readiness monitors (python-OBD Status attributes).
