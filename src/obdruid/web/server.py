@@ -24,7 +24,7 @@ from ..core import DEFAULT_DASHBOARD, ConnectionSettings, ObdError, ObdSession, 
 from ..core.health import HealthReport, run_check
 from ..core.pids import DEFAULT_TILES
 from ..core.report_html import render_html
-from ..core import supporter
+from ..core import supporter, usage
 from ..core.storage import FUELS, Storage, StorageError
 from ..core.vin import decode as vin_decode
 from ..core.trip import LiveReader, TripComputer
@@ -210,6 +210,7 @@ def create_app(settings: Optional[ConnectionSettings] = None, connect: bool = Tr
         if connect:
             # connect in the background so the UI is available immediately
             threading.Thread(target=_safe_connect, args=(state,), daemon=True).start()
+        usage.record_start(state.storage.root)
         stop = threading.Event()
         threading.Thread(target=_watchdog, args=(state, stop), name="obd-watchdog", daemon=True).start()
         yield
@@ -436,7 +437,8 @@ def create_app(settings: Optional[ConnectionSettings] = None, connect: bool = Tr
         return {"version": __version__, "author": about.AUTHOR, "license": about.LICENSE, "contact": about.CONTACT_EMAIL,
                 "key_request": about.KEY_REQUEST_URL, "repo": about.REPO_URL, "issues": about.ISSUES_URL,
                 "support": about.SUPPORT_LINKS, "adapters": about.ADAPTERS, "vehicles": about.VEHICLES_NOTE,
-                "data_dir": str(state.storage.root), "supporter": supporter_state()}
+                "data_dir": str(state.storage.root), "supporter": supporter_state(),
+                "usage": usage.summary(state.storage.root)}
 
     @app.get("/api/health/last")
     def get_health_last():

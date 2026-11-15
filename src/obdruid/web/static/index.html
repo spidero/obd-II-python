@@ -380,9 +380,11 @@
   <!-- Support window shown at start until a supporter key is active -->
   <dialog id="dlg-support">
     <form method="dialog" class="dialog">
-      <h3>Support OBDruid</h3>
+      <div class="about-head"><img src="logo.svg" alt="OBDruid logo" width="72" height="72">
+        <h3>Support OBDruid</h3></div>
       <p>OBDruid is free, open source and has no ads.</p>
       <p data-i18n-html>Support its development and get a <b>supporter key</b>: this window will no longer appear at start.</p>
+      <p class="usage" id="support-usage" hidden></p>
       <div class="actions" id="support-links"></div>
       <p class="muted" id="support-how"></p>
       <details id="support-key-box">

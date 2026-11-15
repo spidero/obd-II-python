@@ -442,3 +442,7 @@ dialog::backdrop { background: rgb(0 0 0 / .55); }
 .battery-live .progress-bar { flex-basis: 100%; }
 .battery-volts { font: 700 2rem var(--mono, monospace); }
 #battery-result { margin-top: .75rem; }
+
+.usage { font-weight: 600; }
+
+.support .actions + .actions, .support .licensed + .actions { margin-top: .6rem; }

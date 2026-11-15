@@ -85,10 +85,18 @@ def _open_window(title: str, url: str) -> bool:
         return False
     try:
         webview.create_window(title, url, width=1280, height=820, min_size=(420, 560))
-        try:
-            webview.start(icon=str(ICON))  # window/taskbar icon (GTK and Qt)
-        except TypeError:  # older pywebview without the icon argument
-            webview.start()
+        from .core.storage import default_data_dir
+
+        # keep the browser storage (language, last tab) between runs instead of pywebview's private mode
+        options = {"icon": str(ICON), "private_mode": False, "storage_path": str(default_data_dir() / "webview")}
+        while True:
+            try:
+                webview.start(**options)
+                break
+            except TypeError:  # older pywebview: drop the newest option and try again
+                if not options:
+                    raise
+                options.popitem()
     except Exception as e:  # no GUI backend (GTK/Qt) available
         print(f"Could not open a window ({e}); opening the web browser instead.")
         return False
