@@ -26,6 +26,8 @@ def render_html(report: HealthReport, lang: str = "en") -> str:
     def _(text: str, **params) -> str:
         return tr(text, lang, **params)
 
+    title = "Battery and charging test" if report.kind == "battery" else "Vehicle health report"
+
     v = report.vehicle or {}
     rows = []
     for f in report.findings:
@@ -75,7 +77,7 @@ def render_html(report: HealthReport, lang: str = "en") -> str:
     return f"""<!doctype html>
 <html lang="{lang}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{escape(_("Vehicle health report"))}</title>
+<title>{escape(_(title))}</title>
 <style>
   body {{ font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #15191e; background: #fff;
          max-width: 900px; margin: 0 auto; padding: 24px 16px; }}
@@ -107,7 +109,7 @@ def render_html(report: HealthReport, lang: str = "en") -> str:
 <div class="toolbar"><button type="button" onclick="window.print()">{escape(_("Save PDF"))}</button>
   <span>{escape(_("In the print window choose “Save as PDF” as the printer."))}</span></div>
 <script>if (new URLSearchParams(location.search).has("print")) addEventListener("load", () => setTimeout(print, 300));</script>
-<h1>{escape(_("Vehicle health report"))}</h1>
+<h1>{escape(_(title))}</h1>
 <div class="muted">{escape(summary)}</div>
 <div class="head">
   <div class="score"><div><b>{report.score}</b><span>{escape(_(report.grade))}</span></div></div>

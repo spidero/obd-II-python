@@ -397,8 +397,8 @@ def create_app(settings: Optional[ConnectionSettings] = None, connect: bool = Tr
     @app.get("/api/history/{record_id}/report.html", response_class=HTMLResponse)
     def get_history_html(record_id: str, lang: str = "en"):
         record = stored(state.storage.record, state.vehicle["id"], record_id)
-        if record.get("kind") != "health":
-            raise HTTPException(404, detail="Not a health report")
+        if record.get("kind") not in ("health", "battery"):
+            raise HTTPException(404, detail="Not a health or battery report")
         return HTMLResponse(render_html(HealthReport.from_dict(record["data"]), lang))
 
     def supporter_state() -> dict:
@@ -488,6 +488,74 @@ def create_app(settings: Optional[ConnectionSettings] = None, connect: bool = Tr
                 data["record"] = state.storage.add_record(state.vehicle["id"], "health", _health_summary(data), data)
             except OSError as e:  # read-only data directory: the report is still shown
                 log.warning("Could not save the health report: %s", e)
+            await ws.send_json({"report": data})
+            await ws.close()
+        except (WebSocketDisconnect, RuntimeError):
+            pass
+
+    @app.websocket("/ws/battery")
+    async def ws_battery(ws: WebSocket):
+        """Guided battery test. Server -> {"ask": step, "prompt"}, client -> {"go": true} or {"skip": true};
+        server streams {"progress", "message", "volts"} and finally {"report"}."""
+        import queue as thread_queue
+
+        from ..core.battery import run_battery_test
+
+        await ws.accept()
+        try:
+            await ws.receive_text()  # {"start": true}
+            if state.health_running:
+                await ws.send_json({"error": "A test is already running"})
+                return
+            try:
+                session = state.check()
+            except HTTPException as e:
+                await ws.send_json({"error": e.detail})
+                return
+            loop = asyncio.get_running_loop()
+            outgoing: asyncio.Queue = asyncio.Queue()
+            answers: thread_queue.Queue = thread_queue.Queue()
+
+            def ask(step: str, prompt: str) -> bool:
+                loop.call_soon_threadsafe(outgoing.put_nowait, {"ask": step, "prompt": prompt})
+                reply = answers.get()           # blocks the test thread until the user answers
+                if reply is None:
+                    raise ObdError("Battery test cancelled")
+                return bool(reply.get("go"))
+
+            def progress(fraction: float, message: str, volts=None) -> None:
+                loop.call_soon_threadsafe(outgoing.put_nowait, {"progress": round(fraction, 3),
+                                                                "message": message, "volts": volts})
+
+            async def forward():
+                while True:
+                    await ws.send_json(await outgoing.get())
+
+            async def receive():
+                try:
+                    while True:
+                        answers.put(json.loads(await ws.receive_text()))
+                except (WebSocketDisconnect, RuntimeError):
+                    answers.put(None)
+
+            state.health_running = True   # keeps the reconnect watchdog away while the voltage dips
+            forwarder, receiver = asyncio.create_task(forward()), asyncio.create_task(receive())
+            try:
+                report = await asyncio.to_thread(run_battery_test, session, ask, progress)
+            except ObdError as e:
+                await ws.send_json({"error": str(e)})
+                return
+            finally:
+                state.health_running = False
+                await asyncio.sleep(0)
+                forwarder.cancel()
+                receiver.cancel()
+            data = report.to_dict()
+            try:
+                data["record"] = state.storage.add_record(state.vehicle["id"], "battery",
+                                                          f"{data['score']}/100 {data['grade']}", data)
+            except OSError as e:
+                log.warning("Could not save the battery report: %s", e)
             await ws.send_json({"report": data})
             await ws.close()
         except (WebSocketDisconnect, RuntimeError):

@@ -83,6 +83,7 @@ class HealthReport:
     disclaimer: str = DISCLAIMER
     freeze_frame: Optional[dict] = None   # FreezeFrame.to_dict() when a frame is stored
     monitor_tests: list[dict] = field(default_factory=list)   # MonitorTest.to_dict()
+    kind: str = "health"                  # health | battery
 
     @property
     def counts(self) -> dict[str, int]:
@@ -99,10 +100,12 @@ class HealthReport:
         return cls(score=data["score"], grade=data["grade"], findings=findings, created=data["created"],
                    duration=data.get("duration", 0.0), samples=data.get("samples", 0),
                    vehicle=data.get("vehicle") or {}, disclaimer=data.get("disclaimer", DISCLAIMER),
-                   freeze_frame=data.get("freeze_frame"), monitor_tests=data.get("monitor_tests") or [])
+                   freeze_frame=data.get("freeze_frame"), monitor_tests=data.get("monitor_tests") or [],
+                   kind=data.get("kind", "health"))
 
     def to_dict(self) -> dict:
         return {
+            "kind": self.kind,
             "score": self.score,
             "grade": self.grade,
             "counts": self.counts,
@@ -537,19 +540,24 @@ RULES = [_rule_dtcs, _rule_readiness, _rule_monitors, _rule_charging, _rule_cool
          _rule_o2]
 
 
-def evaluate(snapshot: Snapshot) -> HealthReport:
-    findings: list[Finding] = []
-    for rule in RULES:
-        findings.extend(rule(snapshot))
-    findings.sort(key=lambda f: SEVERITY_ORDER[f.severity])
-
+def score_findings(findings: list[Finding]) -> tuple[int, str]:
+    """0-100 score and grade: penalties, capped at 59 with a critical and at 84 with a warning finding."""
     score = 100 - sum(f.penalty for f in findings)
     if any(f.severity == "critical" for f in findings):
         score = min(score, 59)
     elif any(f.severity == "warn" for f in findings):
         score = min(score, 84)
     score = max(0, min(100, score))
-    grade = "Good" if score >= 85 else "Fair" if score >= 60 else "Poor"
+    return score, "Good" if score >= 85 else "Fair" if score >= 60 else "Poor"
+
+
+def evaluate(snapshot: Snapshot) -> HealthReport:
+    findings: list[Finding] = []
+    for rule in RULES:
+        findings.extend(rule(snapshot))
+    findings.sort(key=lambda f: SEVERITY_ORDER[f.severity])
+
+    score, grade = score_findings(findings)
     samples = sum(len(v) for v in snapshot.samples.values())
     return HealthReport(score=score, grade=grade, findings=findings,
                         created=datetime.now().isoformat(timespec="seconds"),

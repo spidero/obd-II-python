@@ -430,3 +430,15 @@ dialog::backdrop { background: rgb(0 0 0 / .55); }
 }
 .car-switch:hover { border-color: var(--accent); }
 @media (max-width: 720px) { .car-switch { max-width: 9rem; } }
+
+/* ---------- battery and alternator test ---------- */
+.battery-card { margin-top: 1.25rem; }
+.battery-head { display: flex; gap: 1rem; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; }
+.battery-head h2 { margin: 0 0 .25rem; }
+.battery-step { margin-top: .75rem; padding: .75rem 1rem; border-radius: 10px; background: var(--surface-2);
+  border-left: 4px solid var(--accent); }
+.battery-prompt { font-size: 1.05rem; margin: 0 0 .5rem; }
+.battery-live { margin-top: .75rem; display: flex; flex-wrap: wrap; align-items: baseline; gap: .75rem; }
+.battery-live .progress-bar { flex-basis: 100%; }
+.battery-volts { font: 700 2rem var(--mono, monospace); }
+#battery-result { margin-top: .75rem; }

@@ -214,6 +214,13 @@ class ObdSession:
                 simulated=self.simulated,
             )
 
+    def adapter_voltage(self) -> float | None:
+        """Battery voltage measured by the adapter at the OBD socket (AT RV) – fast, works with the engine off."""
+        with self._lock:
+            self._require()
+            value = self._query(obd.commands.ELM_VOLTAGE).value
+            return round(float(value.magnitude), 2) if value is not None else None
+
     def vin(self) -> str | None:
         """Vehicle identification number, or None when the car does not report it."""
         with self._lock:

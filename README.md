@@ -14,7 +14,7 @@ A small OBD-II workshop tool in Python: live data, reading and clearing trouble 
 freeze frame, on-board monitor tests (mode 06), readiness monitors, fuel consumption and a
 **vehicle health check** with a 0–100 score. One core, three front ends:
 
-- **CLI** – `obdruid info | live | dtc | tests | clear | health | history | pids | ports | supporter`
+- **CLI** – `obdruid info | live | dtc | tests | clear | health | battery | history | pids | ports | supporter`
 - **Web UI** – `obdruid web`, open it from a laptop or a phone
 - **Desktop GUI** – `obdruid gui`, the same UI in a native window (pywebview)
 
@@ -213,6 +213,25 @@ obdruid --sim --sim-fault lean --sim-fault catalyst health -d 15
 ```
 
 Faults: `lean`, `rich`, `charging`, `overheat`, `rough_idle`, `lazy_o2`, `catalyst`, `cleared`.
+
+### Battery and alternator test
+
+A guided test in the *Health check* tab (or `obdruid battery`): start with the **engine off and the
+ignition on** and follow the steps.
+
+| Step | What is measured | Healthy |
+|---|---|---|
+| Engine off | battery voltage at rest → state of charge | 12.4 V or more |
+| Start the engine | lowest voltage while cranking | stays above 10 V |
+| Idle | charging voltage and how steady it is | 13.4–14.8 V |
+| ~2000 rpm, lights + rear heater + blower on | charging under load | stays above 13.4 V |
+
+The result says in plain words what is wrong – a discharged or weak battery, an alternator that does not
+charge or cannot keep up, or a faulty regulator (overcharging, fluctuating voltage). Started with the
+engine running, only the charging steps are done. The voltage is measured by the adapter at the OBD socket;
+results are saved in the history and can be printed or saved as PDF.
+
+![Battery test](docs/screenshots/sim-battery-test.png)
 
 ### Freeze frame, permanent codes and monitor tests
 

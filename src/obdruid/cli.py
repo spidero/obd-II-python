@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import logging
 import time
 from datetime import datetime
@@ -532,6 +533,45 @@ def web(
     from .web.server import run
 
     run(_settings(ctx), host=host, port=port, connect=not no_connect)
+
+
+@app.command()
+def battery(
+    ctx: typer.Context,
+    as_json: bool = typer.Option(False, "--json", help="Print the report as JSON."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Do not wait for Enter (skip the start and load steps)."),
+):
+    """Battery and alternator test: battery at rest, voltage dip while starting, charging at idle and under load."""
+    from .core.battery import run_battery_test
+
+    def ask(step: str, prompt: str) -> bool:
+        if yes:
+            return step in ("rest", "idle")
+        console.print(f"\n[bold]{prompt}[/]")
+        answer = typer.prompt("Press Enter when ready, or type s to skip", default="", show_default=False)
+        return answer.strip().lower() != "s"
+
+    last = {"msg": None}
+
+    def progress(frac: float, message: str, volts):
+        if message != last["msg"]:
+            last["msg"] = message
+            err.print(f"{message}…")
+
+    try:
+        with _open(ctx) as s:
+            report = run_battery_test(s, ask, progress)
+    except ObdError as e:
+        _fail(e)
+    if as_json:
+        print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
+        return
+    console.print(f"\n[bold]Battery & charging: {report.score}/100 – {report.grade}[/]")
+    t = Table("Result", "Area", "Finding", "Value")
+    for f in report.findings:
+        badge, color = SEVERITY_STYLE[f.severity]
+        t.add_row(badge, f.area, f"[{color}]{f.title}[/]\n[dim]{f.detail}[/]", f.value)
+    console.print(t)
 
 
 @app.command()

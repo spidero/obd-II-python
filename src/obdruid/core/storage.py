@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 FUELS = ("petrol", "diesel", "lpg")
-KINDS = ("health", "dtc-backup", "trip")
+KINDS = ("health", "battery", "dtc-backup", "trip")
 _ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
 
 

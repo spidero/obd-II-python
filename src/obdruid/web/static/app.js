@@ -201,6 +201,7 @@ function applyState(s) {
   const online = s.state === "connected";
   $$("#btn-dtc-read, #btn-dtc-clear, #btn-info, #btn-params, #btn-tests, #btn-trip-reset").forEach(b => (b.disabled = !online));
   $("#btn-health").disabled = !online || healthRunning;
+  $("#btn-battery").disabled = !online || !!batteryWs;
   $("#dash-empty").hidden = online;
   if (online && prev !== "connected") onConnected();
   if (!online && prev === "connected") closeLive();
@@ -792,6 +793,76 @@ function renderHealth(r) {
   box.append(el("p", { class: "disclaimer", text: r.disclaimer }));
 }
 
+// ---------------------------------------------------------------- battery and alternator test
+let batteryWs = null;
+function runBattery() {
+  if (batteryWs) return;
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  const ws = new WebSocket(`${proto}://${location.host}/ws/battery`);
+  batteryWs = ws;
+  $("#btn-battery").disabled = true;
+  $("#battery-result").replaceChildren();
+  $("#battery-live").hidden = false;
+  $("#battery-volts").textContent = "—";
+  $("#battery-msg").textContent = t("Starting…");
+  ws.onopen = () => ws.send(JSON.stringify({ start: true }));
+  ws.onmessage = ev => {
+    const msg = JSON.parse(ev.data);
+    if (msg.error) { toast(msg.error, true); return; }
+    if (msg.ask) {
+      $("#battery-prompt").textContent = t(msg.prompt);
+      $("#battery-step").hidden = false;
+      $("#btn-battery-skip").hidden = msg.ask === "idle";
+      $("#btn-battery-go").focus();
+      return;
+    }
+    if (msg.progress !== undefined) {
+      $("#battery-bar").style.width = `${Math.round(msg.progress * 100)}%`;
+      $("#battery-msg").textContent = t(msg.message);
+      if (typeof msg.volts === "number") $("#battery-volts").textContent = `${fmt(msg.volts, 2)} V`;
+    }
+    if (msg.report) renderBattery(msg.report);
+  };
+  ws.onclose = () => {
+    batteryWs = null;
+    $("#btn-battery").disabled = ui.state !== "connected";
+    $("#battery-step").hidden = true;
+    $("#battery-live").hidden = true;
+  };
+}
+
+function answerBattery(go) {
+  if (!batteryWs) return;
+  $("#battery-step").hidden = true;
+  batteryWs.send(JSON.stringify(go ? { go: true } : { skip: true }));
+}
+$("#btn-battery").addEventListener("click", runBattery);
+$("#btn-battery-go").addEventListener("click", () => answerBattery(true));
+$("#btn-battery-skip").addEventListener("click", () => answerBattery(false));
+
+function renderBattery(r) {
+  const box = $("#battery-result");
+  box.replaceChildren();
+  const ring = el("div", { class: "score-ring", "data-grade": r.grade, style: `--p:${r.score}` },
+    el("div", {}, el("div", {}, el("b", { text: String(r.score) }), el("span", { text: r.grade }))));
+  const chips = el("div", { class: "chips" });
+  for (const k of ["critical", "warn", "info", "ok", "skipped"]) {
+    if (r.counts[k]) chips.append(el("span", { class: "chip " + k, text: t(`{n} ${SEV_LABEL[k].toLowerCase()}`, { n: r.counts[k] }) }));
+  }
+  const headline = { Good: "Battery and charging look fine", Fair: "Battery or charging need attention",
+    Poor: "Battery or charging problem" }[r.grade];
+  const meta = el("div", { class: "health-meta" }, el("h2", { text: headline }), chips,
+    el("div", { class: "muted", text: `${r.created.replace("T", " ")} · ${Math.round(r.duration)} s` }));
+  const actions = el("div", { class: "actions" });
+  if (r.record) {
+    const url = `/api/history/${r.record.id}/report.html?lang=${i18n.lang}`;
+    actions.append(el("a", { class: "btn", href: url, target: "_blank", rel: "noopener", text: "Printable report" }),
+      el("a", { class: "btn", href: url + "&print=1", target: "_blank", rel: "noopener", text: "Save PDF" }));
+  }
+  box.append(el("div", { class: "card health-summary" }, ring, meta, el("span", { class: "spacer" }), actions));
+  for (const f of r.findings) box.append(findingRow(f));
+}
+
 function runHealth() {
   if (healthRunning) return;
   healthRunning = true;
@@ -905,7 +976,7 @@ async function readTests(silent = false) {
 $("#btn-tests").addEventListener("click", () => readTests());
 
 // ---------------------------------------------------------------- history and vehicle profiles
-const KIND_LABEL = { health: "Health report", "dtc-backup": "Pre-clear backup", trip: "Trip" };
+const KIND_LABEL = { health: "Health report", battery: "Battery test", "dtc-backup": "Pre-clear backup", trip: "Trip" };
 let vehicles = [];
 
 async function loadVehicles() {
@@ -965,7 +1036,7 @@ function renderHistory(records) {
       el("span", { class: "hist-kind", text: KIND_LABEL[r.kind] || r.kind }),
       el("span", { class: "hist-summary", text: tWords(r.summary) }),
       el("span", { class: "actions" },
-        r.kind === "health" ? el("a", { class: "btn", href: `/api/history/${r.id}/report.html?lang=${i18n.lang}`, target: "_blank", rel: "noopener", text: "Report" }) : null,
+        r.kind === "health" || r.kind === "battery" ? el("a", { class: "btn", href: `/api/history/${r.id}/report.html?lang=${i18n.lang}`, target: "_blank", rel: "noopener", text: "Report" }) : null,
         view, del)));
   }
 }
@@ -987,6 +1058,8 @@ async function viewRecord(id) {
         for (const c of items) body.append(dtcRow(c, cls));
       }
       body.append(freezeFrameCard(d.freeze_frame));
+    } else if (rec.kind === "battery") {
+      for (const f of d.findings) body.append(findingRow(f));
     } else if (rec.kind === "trip") {
       const dl = el("dl");
       fillDl(dl, [
