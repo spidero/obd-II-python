@@ -138,3 +138,27 @@ def test_static_files_are_revalidated():
         for path in ("/", "/style.css", "/app.js"):
             r = c.get(path)
             assert r.status_code == 200 and r.headers["cache-control"] == "no-cache"
+
+
+def test_installable_app_files():
+    with TestClient(create_app(ConnectionSettings(simulate=True), connect=False)) as c:
+        manifest = c.get("/manifest.webmanifest")
+        assert manifest.status_code == 200 and manifest.headers["content-type"].startswith("application/manifest+json")
+        data = manifest.json()
+        assert data["display"] == "standalone" and data["name"] == "OBDruid"
+        for icon in data["icons"]:
+            assert c.get("/" + icon["src"]).status_code == 200
+        assert any(i["purpose"] == "maskable" for i in data["icons"])
+        sw = c.get("/sw.js")
+        assert sw.status_code == 200 and "javascript" in sw.headers["content-type"] and "/api/" in sw.text
+        assert 'rel="manifest"' in c.get("/").text
+
+
+def test_web_ssl_options_must_come_together(tmp_path):
+    from typer.testing import CliRunner
+
+    from obdruid.cli import app as cli_app
+    cert = tmp_path / "c.pem"
+    cert.write_text("x")
+    r = CliRunner().invoke(cli_app, ["--sim", "web", "--ssl-cert", str(cert)])
+    assert r.exit_code == 2 and "together" in r.output

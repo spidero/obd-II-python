@@ -8,6 +8,11 @@
   <link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
   <link rel="apple-touch-icon" href="logo-180.png">
   <meta name="theme-color" content="#15191e">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="OBDruid">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -128,6 +133,30 @@
         </div>
       </div>
       <div id="health-result"></div>
+
+      <div class="card battery-card">
+        <div class="battery-head">
+          <div>
+            <h2>Battery and alternator test</h2>
+            <p class="muted" data-i18n-html>Checks the battery at rest and while starting, and whether the alternator charges at idle
+              and under load. Start with the <strong>engine off and the ignition on</strong>.</p>
+          </div>
+          <button class="btn btn-primary" id="btn-battery">Start battery test</button>
+        </div>
+        <div class="battery-step" id="battery-step" hidden>
+          <p class="battery-prompt" id="battery-prompt"></p>
+          <div class="actions">
+            <button class="btn btn-primary" type="button" id="btn-battery-go">Ready</button>
+            <button class="btn" type="button" id="btn-battery-skip">Skip this step</button>
+          </div>
+        </div>
+        <div class="battery-live" id="battery-live" hidden>
+          <span class="battery-volts" id="battery-volts">—</span>
+          <span class="muted" id="battery-msg"></span>
+          <div class="progress-bar"><span id="battery-bar"></span></div>
+        </div>
+      </div>
+      <div id="battery-result"></div>
     </section>
 
     <!-- History -->
@@ -178,6 +207,7 @@
             <select id="hist-kind">
               <option value="">all</option>
               <option value="health">health reports</option>
+              <option value="battery">battery tests</option>
               <option value="dtc-backup">pre-clear backups</option>
               <option value="trip">trips</option>
             </select>

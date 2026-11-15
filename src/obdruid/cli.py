@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import logging
 import time
 from datetime import datetime
@@ -151,6 +152,13 @@ def info(ctx: typer.Context):
     t.add_row("Voltage", f"{adapter.voltage:.1f} V" if adapter.voltage is not None else "?")
     t.add_row("Protocol", f"{adapter.protocol} (#{adapter.protocol_id})")
     t.add_row("VIN", vin or "[dim]not reported by the car[/]")
+    from .core.vin import decode as vin_decode
+
+    decoded = vin_decode(vin)
+    if decoded and decoded.manufacturer:
+        t.add_row("Manufacturer", decoded.manufacturer + (f" ({decoded.country})" if decoded.country else ""))
+    if decoded and decoded.year:
+        t.add_row("Model year", f"{decoded.year} (from VIN)")
     t.add_row("Ignition", status.ignition_type)
     t.add_row("MIL (check engine)", "[bold red]ON[/]" if status.mil else "[green]off[/]")
     t.add_row("Stored codes", str(status.dtc_count))
@@ -527,11 +535,59 @@ def web(
                              help="Listen address (0.0.0.0 = whole network)."),
     port: int = typer.Option(8090, "--web-port", envvar="OBD_WEB_PORT", help="Web server port."),
     no_connect: bool = typer.Option(False, "--no-connect", help="Do not connect to the adapter on start."),
+    ssl_cert: Optional[Path] = typer.Option(None, "--ssl-cert", envvar="OBD_WEB_SSL_CERT", exists=True,
+                                            help="TLS certificate (PEM) to serve HTTPS – needed to install "
+                                                 "the app on Android from another machine."),
+    ssl_key: Optional[Path] = typer.Option(None, "--ssl-key", envvar="OBD_WEB_SSL_KEY", exists=True,
+                                           help="Private key (PEM) for --ssl-cert."),
 ):
     """Start the web interface."""
     from .web.server import run
 
-    run(_settings(ctx), host=host, port=port, connect=not no_connect)
+    if bool(ssl_cert) != bool(ssl_key):
+        err.print("[red]--ssl-cert and --ssl-key must be given together.[/]")
+        raise typer.Exit(2)
+    run(_settings(ctx), host=host, port=port, connect=not no_connect,
+        ssl_cert=str(ssl_cert) if ssl_cert else None, ssl_key=str(ssl_key) if ssl_key else None)
+
+
+@app.command()
+def battery(
+    ctx: typer.Context,
+    as_json: bool = typer.Option(False, "--json", help="Print the report as JSON."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Do not wait for Enter (skip the start and load steps)."),
+):
+    """Battery and alternator test: battery at rest, voltage dip while starting, charging at idle and under load."""
+    from .core.battery import run_battery_test
+
+    def ask(step: str, prompt: str) -> bool:
+        if yes:
+            return step in ("rest", "idle")
+        console.print(f"\n[bold]{prompt}[/]")
+        answer = typer.prompt("Press Enter when ready, or type s to skip", default="", show_default=False)
+        return answer.strip().lower() != "s"
+
+    last = {"msg": None}
+
+    def progress(frac: float, message: str, volts):
+        if message != last["msg"]:
+            last["msg"] = message
+            err.print(f"{message}…")
+
+    try:
+        with _open(ctx) as s:
+            report = run_battery_test(s, ask, progress)
+    except ObdError as e:
+        _fail(e)
+    if as_json:
+        print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
+        return
+    console.print(f"\n[bold]Battery & charging: {report.score}/100 – {report.grade}[/]")
+    t = Table("Result", "Area", "Finding", "Value")
+    for f in report.findings:
+        badge, color = SEVERITY_STYLE[f.severity]
+        t.add_row(badge, f.area, f"[{color}]{f.title}[/]\n[dim]{f.detail}[/]", f.value)
+    console.print(t)
 
 
 @app.command()

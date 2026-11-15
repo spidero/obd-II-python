@@ -122,8 +122,31 @@ class ObdSession:
                 self.last_error = ("The adapter responds but the car does not (state: "
                                    f"{status}). Is the ignition on?")
                 raise ObdError(self.last_error)
+            self._complete_pid_masks(conn)
             self._conn = conn
             self.last_error = None
+
+    @staticmethod
+    def _complete_pid_masks(conn, tries: int = 3) -> None:
+        """Re-ask "supported PIDs" masks whose answer got lost (python-OBD then silently drops that whole
+        range – over Bluetooth this hides e.g. the control module voltage). A mask is missing when the
+        previous mask announced it but none of its 32 PIDs is known."""
+        for getter in obd.commands.pid_getters():
+            if getter.mode != 1 or not conn.supports(getter):
+                continue
+            first, last = getter.pid + 1, getter.pid + 0x20
+            if any(c.mode == 1 and first <= c.pid <= last for c in conn.supported_commands):
+                continue
+            for _ in range(tries):
+                response = conn.query(getter)
+                if not response.is_null():
+                    for i, bit in enumerate(response.value):
+                        if bit and obd.commands.has_pid(1, getter.pid + i + 1):
+                            conn.supported_commands.add(obd.commands[1][getter.pid + i + 1])
+                        if bit and obd.commands.has_pid(2, getter.pid + i + 1):
+                            conn.supported_commands.add(obd.commands[2][getter.pid + i + 1])
+                    log.info("Recovered the PID mask %s on retry", getter.name)
+                    break
 
     def close(self) -> None:
         with self._lock:
@@ -190,6 +213,13 @@ class ObdSession:
                 protocol_id=conn.protocol_id(),
                 simulated=self.simulated,
             )
+
+    def adapter_voltage(self) -> float | None:
+        """Battery voltage measured by the adapter at the OBD socket (AT RV) – fast, works with the engine off."""
+        with self._lock:
+            self._require()
+            value = self._query(obd.commands.ELM_VOLTAGE).value
+            return round(float(value.magnitude), 2) if value is not None else None
 
     def vin(self) -> str | None:
         """Vehicle identification number, or None when the car does not report it."""

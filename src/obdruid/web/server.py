@@ -5,9 +5,12 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import mimetypes
 import threading
+import time
 from contextlib import asynccontextmanager
 from dataclasses import replace
+from functools import lru_cache
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -23,6 +26,7 @@ from ..core.pids import DEFAULT_TILES
 from ..core.report_html import render_html
 from ..core import supporter
 from ..core.storage import FUELS, Storage, StorageError
+from ..core.vin import decode as vin_decode
 from ..core.trip import LiveReader, TripComputer
 
 log = logging.getLogger(__name__)
@@ -42,13 +46,17 @@ class AppState:
         self.trip = TripComputer(fuel=self.storage.active().get("fuel", "petrol"))
         self.session = ObdSession(settings)
         self.reader = LiveReader(self.session, self.trip)
-        self.state = "disconnected"  # disconnected | connecting | connected | error
+        self.state = "disconnected"  # disconnected | connecting | connected | reconnecting | error
         self.error: Optional[str] = None
+        self.auto_reconnect = False     # True after a connect request, False after "Disconnect"
+        self.attempt = 0                # reconnect attempts since the link was lost
+        self._next_try = 0.0
         self._lock = threading.Lock()
         self.last_report: Optional[HealthReport] = None
         self.health_running = False
 
     def connect(self, settings: Optional[ConnectionSettings] = None) -> None:
+        self.auto_reconnect = True
         with self._lock:
             if settings is not None:
                 self.settings = settings
@@ -85,8 +93,38 @@ class AppState:
         return self.storage.active()
 
     def disconnect(self) -> None:
+        self.auto_reconnect = False
         self.session.close()
         self.state, self.error = "disconnected", None
+
+    RETRY_DELAYS = (5, 5, 5, 15, 15, 30)  # seconds before attempt 1, 2, ...; then every 30 s
+
+    def watchdog_step(self, now: Optional[float] = None) -> None:
+        """Notice a lost link and reconnect with back-off (called every few seconds by a thread)."""
+        now = time.monotonic() if now is None else now
+        if self.state == "connected" and not self.session.connected:
+            self.state, self.error = "error", self.session.last_error or "Connection to the adapter was lost"
+        if not self.auto_reconnect or self.health_running or self.state not in ("error", "reconnecting"):
+            if self.state == "connected":
+                self.attempt = 0
+            return
+        if self.attempt == 0 and self.state == "error":  # first notice: schedule attempt 1
+            self.state = "reconnecting"
+            self._next_try = now + self.RETRY_DELAYS[0]
+            self.attempt = 1
+            return
+        if now < self._next_try:
+            return
+        reason = self.error
+        try:
+            self.connect()
+            self.attempt = 0
+            log.info("Reconnected to the adapter")
+        except Exception:
+            delay = self.RETRY_DELAYS[min(self.attempt, len(self.RETRY_DELAYS) - 1)]
+            self.attempt += 1
+            self.state, self.error = "reconnecting", self.error or reason
+            self._next_try = time.monotonic() + delay
 
     def check(self) -> ObdSession:
         if self.state != "connected" or not self.session.connected:
@@ -101,6 +139,7 @@ class AppState:
             "state": self.state,
             "error": self.error,
             "settings": {"port": s.port, "baudrate": s.baudrate, "protocol": s.protocol, "simulate": s.simulate},
+            "attempt": self.attempt,
             "version": __version__,
             "vehicle": self.vehicle,
         }
@@ -171,7 +210,10 @@ def create_app(settings: Optional[ConnectionSettings] = None, connect: bool = Tr
         if connect:
             # connect in the background so the UI is available immediately
             threading.Thread(target=_safe_connect, args=(state,), daemon=True).start()
+        stop = threading.Event()
+        threading.Thread(target=_watchdog, args=(state, stop), name="obd-watchdog", daemon=True).start()
         yield
+        stop.set()
         state.disconnect()
 
     app = FastAPI(title="OBDruid", version=__version__, lifespan=lifespan)
@@ -193,6 +235,11 @@ def create_app(settings: Optional[ConnectionSettings] = None, connect: bool = Tr
     @app.get("/api/ports")
     def get_ports():
         return {"ports": find_ports()}
+
+    @app.get("/api/i18n/dtc")
+    def get_dtc_translations(lang: str = "en"):
+        """Trouble code descriptions in another language: {english: translated} for the browser's dictionary."""
+        return {"descriptions": _dtc_translations(lang)}
 
     @app.post("/api/bluetooth/scan")
     async def bluetooth_scan(seconds: int = 8):
@@ -222,6 +269,7 @@ def create_app(settings: Optional[ConnectionSettings] = None, connect: bool = Tr
             return {
                 "adapter": s.adapter_info().to_dict(),
                 "vin": s.vin(),
+                "vin_info": (lambda info: info.to_dict() if info else None)(vin_decode(s.vin())),
                 "status": s.status().to_dict(),
             }
         return guarded(work)
@@ -358,8 +406,8 @@ def create_app(settings: Optional[ConnectionSettings] = None, connect: bool = Tr
     @app.get("/api/history/{record_id}/report.html", response_class=HTMLResponse)
     def get_history_html(record_id: str, lang: str = "en"):
         record = stored(state.storage.record, state.vehicle["id"], record_id)
-        if record.get("kind") != "health":
-            raise HTTPException(404, detail="Not a health report")
+        if record.get("kind") not in ("health", "battery"):
+            raise HTTPException(404, detail="Not a health or battery report")
         return HTMLResponse(render_html(HealthReport.from_dict(record["data"]), lang))
 
     def supporter_state() -> dict:
@@ -454,6 +502,74 @@ def create_app(settings: Optional[ConnectionSettings] = None, connect: bool = Tr
         except (WebSocketDisconnect, RuntimeError):
             pass
 
+    @app.websocket("/ws/battery")
+    async def ws_battery(ws: WebSocket):
+        """Guided battery test. Server -> {"ask": step, "prompt"}, client -> {"go": true} or {"skip": true};
+        server streams {"progress", "message", "volts"} and finally {"report"}."""
+        import queue as thread_queue
+
+        from ..core.battery import run_battery_test
+
+        await ws.accept()
+        try:
+            await ws.receive_text()  # {"start": true}
+            if state.health_running:
+                await ws.send_json({"error": "A test is already running"})
+                return
+            try:
+                session = state.check()
+            except HTTPException as e:
+                await ws.send_json({"error": e.detail})
+                return
+            loop = asyncio.get_running_loop()
+            outgoing: asyncio.Queue = asyncio.Queue()
+            answers: thread_queue.Queue = thread_queue.Queue()
+
+            def ask(step: str, prompt: str) -> bool:
+                loop.call_soon_threadsafe(outgoing.put_nowait, {"ask": step, "prompt": prompt})
+                reply = answers.get()           # blocks the test thread until the user answers
+                if reply is None:
+                    raise ObdError("Battery test cancelled")
+                return bool(reply.get("go"))
+
+            def progress(fraction: float, message: str, volts=None) -> None:
+                loop.call_soon_threadsafe(outgoing.put_nowait, {"progress": round(fraction, 3),
+                                                                "message": message, "volts": volts})
+
+            async def forward():
+                while True:
+                    await ws.send_json(await outgoing.get())
+
+            async def receive():
+                try:
+                    while True:
+                        answers.put(json.loads(await ws.receive_text()))
+                except (WebSocketDisconnect, RuntimeError):
+                    answers.put(None)
+
+            state.health_running = True   # keeps the reconnect watchdog away while the voltage dips
+            forwarder, receiver = asyncio.create_task(forward()), asyncio.create_task(receive())
+            try:
+                report = await asyncio.to_thread(run_battery_test, session, ask, progress)
+            except ObdError as e:
+                await ws.send_json({"error": str(e)})
+                return
+            finally:
+                state.health_running = False
+                await asyncio.sleep(0)
+                forwarder.cancel()
+                receiver.cancel()
+            data = report.to_dict()
+            try:
+                data["record"] = state.storage.add_record(state.vehicle["id"], "battery",
+                                                          f"{data['score']}/100 {data['grade']}", data)
+            except OSError as e:
+                log.warning("Could not save the battery report: %s", e)
+            await ws.send_json({"report": data})
+            await ws.close()
+        except (WebSocketDisconnect, RuntimeError):
+            pass
+
     @app.websocket("/ws/live")
     async def ws_live(ws: WebSocket):
         """Client sends {"keys": [...], "interval": 0.5}; server streams {"readings": [...]}."""
@@ -502,6 +618,9 @@ def create_app(settings: Optional[ConnectionSettings] = None, connect: bool = Tr
     return app
 
 
+mimetypes.add_type("application/manifest+json", ".webmanifest")
+
+
 class NoCacheStaticFiles(StaticFiles):
     """Static files the browser must revalidate (ETag), so an update never mixes new HTML with old CSS/JS."""
 
@@ -511,6 +630,29 @@ class NoCacheStaticFiles(StaticFiles):
         return response
 
 
+@lru_cache(maxsize=4)
+def _dtc_translations(lang: str) -> dict:
+    from obd.codes import DTC
+
+    from ..core import dtc_i18n
+    from ..core.dtc import clean_description
+
+    out = {}
+    for text in {clean_description(v) for v in DTC.values()}:
+        local = dtc_i18n.translate(text, lang)
+        if local != text:
+            out[text] = local
+    return out
+
+
+def _watchdog(state: AppState, stop: threading.Event, every: float = 2.0) -> None:
+    while not stop.wait(every):
+        try:
+            state.watchdog_step()
+        except Exception as e:  # never let the watchdog die
+            log.warning("Watchdog: %s", e)
+
+
 def _safe_connect(state: AppState) -> None:
     try:
         state.connect()
@@ -518,10 +660,12 @@ def _safe_connect(state: AppState) -> None:
         pass  # error is stored in state and shown in the UI
 
 
-def run(settings: ConnectionSettings, host: str = "127.0.0.1", port: int = 8090, connect: bool = True) -> None:
+def run(settings: ConnectionSettings, host: str = "127.0.0.1", port: int = 8090, connect: bool = True,
+        ssl_cert: Optional[str] = None, ssl_key: Optional[str] = None) -> None:
     import uvicorn
 
     app = create_app(settings, connect=connect)
     shown = "localhost" if host in ("127.0.0.1", "0.0.0.0") else host
-    print(f"OBDruid: http://{shown}:{port}/  (Ctrl+C to quit)")
-    uvicorn.run(app, host=host, port=port, log_level="warning")
+    scheme = "https" if ssl_cert else "http"
+    print(f"OBDruid: {scheme}://{shown}:{port}/  (Ctrl+C to quit)")
+    uvicorn.run(app, host=host, port=port, log_level="warning", ssl_certfile=ssl_cert, ssl_keyfile=ssl_key)
