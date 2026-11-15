@@ -163,7 +163,8 @@ class Storage:
 
         The simulator always gets its own "Simulator" profile, so test data never lands
         in a real car's history. A real car with a VIN gets the profile with that VIN,
-        else the active one if it has no VIN yet (it adopts the VIN), else a new profile.
+        else the active one if it has no VIN and no history yet (it adopts the VIN), else a
+        new profile – a profile that already holds another car's history never adopts a VIN.
         A real car without a VIN keeps the active profile.
         """
         with self._lock:
@@ -183,7 +184,7 @@ class Storage:
             for v in real:
                 if v.get("vin") == vin:
                     return self.activate(v["id"])
-            if not active.get("vin"):
+            if not active.get("vin") and not self.records(active["id"]):
                 return self.update(active["id"], vin=vin)
             return self.create(f"Car {vin[-6:]}", vin=vin)
 

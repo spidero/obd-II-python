@@ -123,3 +123,12 @@ def test_data_dir_migrates_from_obd_tool(tmp_path, monkeypatch):
     assert (tmp_path / "obdruid" / "supporter.json").exists() and not (tmp_path / "obd-tool").exists()
     monkeypatch.setenv("OBD_TOOL_DATA", str(tmp_path / "custom"))  # the old variable still works
     assert default_data_dir() == tmp_path / "custom"
+
+
+def test_used_profile_does_not_adopt_a_vin(tmp_path):
+    st = Storage(tmp_path)
+    car = st.active()  # a car without a VIN that already has history
+    st.add_record(car["id"], "health", "90/100", {"score": 90})
+    new = st.select_for_vin("WF0XXXTTFXDM00001")
+    assert new["id"] != car["id"] and new["vin"] == "WF0XXXTTFXDM00001"
+    assert not st.get(car["id"]).get("vin")

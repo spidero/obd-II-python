@@ -76,7 +76,10 @@ gearbox modules. Mode 06 needs a CAN protocol. The same table is shown in the Co
 ## Tested hardware
 
 - Adapter: Vgate **vLinker FS** USB (FTDI, ELM327 v2.3 compatible), 115200 baud
-- Car: petrol engine, ISO 15765-4 CAN 11 bit / 500 kbit, single engine ECU (7E8)
+- Cars:
+  - petrol engine, ISO 15765-4 CAN 11 bit / 500 kbit, single engine ECU (7E8), 33 live parameters
+  - Ford diesel with DPF, ISO 15765-4 CAN 11 bit / 500 kbit, VIN reported (16 characters),
+    31 live parameters incl. fuel rail pressure, EGR, oil temperature, fuel level
 - Host: Orange Pi 3B, Debian 12 (aarch64), Python 3.11; also any Linux PC
 
 Any ELM327 compatible adapter (USB, Bluetooth via `rfcomm`) should work through
