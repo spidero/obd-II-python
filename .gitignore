@@ -5,3 +5,6 @@ __pycache__/
 *.csv
 build/
 dist/
+
+# Local Claude Code notes (project notes live in the private notes repo)
+CLAUDE.local.md
