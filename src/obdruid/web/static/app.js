@@ -18,8 +18,11 @@ const store = {
 // ---------------------------------------------------------------- language
 // English texts are the keys. pl.json holds {strings: {english: polish}, patterns: [[regex, replacement]],
 // words: {english: polish}}; the same file is used by the server for the printable report.
+// ?lang=pl in the address wins (works where the browser storage is not kept, e.g. a private window)
+const urlLang = new URLSearchParams(location.search).get("lang");
 const i18n = {
-  lang: store.get("lang", (navigator.language || "en").toLowerCase().startsWith("pl") ? "pl" : "en"),
+  lang: ["en", "pl"].includes(urlLang) ? urlLang
+    : store.get("lang", (navigator.language || "en").toLowerCase().startsWith("pl") ? "pl" : "en"),
   strings: {}, patterns: [], words: null,
 };
 
@@ -83,8 +86,12 @@ async function initLanguage() {
   const btn = $("#btn-lang");
   btn.textContent = i18n.lang.toUpperCase();
   btn.addEventListener("click", () => {
-    store.set("lang", i18n.lang === "pl" ? "en" : "pl");
-    location.reload();  // simplest way to redraw every text
+    const next = i18n.lang === "pl" ? "en" : "pl";
+    store.set("lang", next);
+    const url = new URL(location.href);
+    url.searchParams.set("lang", next);
+    url.searchParams.set("nosupport", "1");  // a language switch is not a new start
+    location.replace(url);  // reload: simplest way to redraw every text
   });
   if (i18n.lang === "en") return;
   try {
@@ -1209,6 +1216,10 @@ $("#btn-about").addEventListener("click", async () => {
       dl.append(el("dt", { text: k }), el("dd", {}, el("a", { href: url, target: "_blank", rel: "noopener", text: url })));
     }
     dl.append(el("dt", { text: "Data folder" }), el("dd", { text: a.data_dir }));
+    if (a.usage && a.usage.starts) {
+      dl.append(el("dt", { text: "Usage" }),
+        el("dd", { text: t("starts: {starts} · installed: {since} · days: {days}", a.usage) }));
+    }
     $("#dlg-about").showModal();
   } catch (e) { toast(e.message, true); }
 });
@@ -1326,11 +1337,27 @@ $("#btn-disconnect").addEventListener("click", async () => {
 });
 
 // ---------------------------------------------------------------- support window / supporter key
+// "Started 42 times over 120 days" – local counters only
+function usageText(u) {
+  if (!u || !u.starts) return "";
+  return t("Program starts: {starts} · days since installation: {days}", { starts: u.starts, days: u.days });
+}
+
 async function showSupport(force = false) {
   const a = await loadAbout();
   if (a.supporter && a.supporter.active && !force) return;
+  if (!force) {
+    // once per program start: not again after a reload or a language switch
+    let seen = new URLSearchParams(location.search).has("nosupport");
+    try { seen = seen || sessionStorage.getItem("obd.support") === String(a.usage ? a.usage.starts : 1); } catch { /* no storage */ }
+    if (seen) return;
+    try { sessionStorage.setItem("obd.support", String(a.usage ? a.usage.starts : 1)); } catch { /* no storage */ }
+  }
   $("#support-links").replaceChildren(...a.support.map(l =>
     el("a", { class: "btn btn-primary", href: l.url, target: "_blank", rel: "noopener", text: l.name })));
+  const usageLine = usageText(a.usage);
+  $("#support-usage").hidden = !usageLine;
+  $("#support-usage").textContent = usageLine;
   // "... write to {email} ..." with the address as a mailto link
   const [before, after] = t("After supporting, write to {email} with the payment confirmation and the name to show in the program. The key comes by e-mail.").split("{email}");
   $("#support-how").replaceChildren(before, el("a", { href: a.key_request }, a.contact), after || "");
