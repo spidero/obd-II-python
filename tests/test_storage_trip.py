@@ -132,3 +132,27 @@ def test_used_profile_does_not_adopt_a_vin(tmp_path):
     new = st.select_for_vin("WF0XXXTTFXDM00001")
     assert new["id"] != car["id"] and new["vin"] == "WF0XXXTTFXDM00001"
     assert not st.get(car["id"]).get("vin")
+
+
+def test_car_without_vin_is_found_by_its_adapter(tmp_path):
+    st = Storage(tmp_path)
+    usb, bt, bt2 = "/dev/serial/by-id/usb-vlinker", "rfcomm://01:23:45:67:89:BA", "ble://81:23:45:67:89:BB"
+    petrol = st.active()                                   # first car: no VIN, on USB
+    st.update(petrol["id"], connection={"port": usb})
+    st.add_record(petrol["id"], "health", "80/100", {"score": 80})
+    diesel = st.select_for_vin("WF0XXXTTFXDM00001", port=usb)  # diesel with a VIN, same USB adapter
+    assert diesel["id"] != petrol["id"] and st.active()["id"] == diesel["id"]
+
+    # petrol car now on Bluetooth: the active diesel has a VIN, so it is not that car -> the only VIN-less profile
+    assert st.select_for_vin(None, port=bt)["id"] == petrol["id"]
+    st.update(petrol["id"], connection={"port": bt})
+    assert st.select_for_vin("WF0XXXTTFXDM00001", port=usb)["id"] == diesel["id"]
+    assert st.select_for_vin(None, port=bt)["id"] == petrol["id"]      # recognised by its adapter
+
+    # a second VIN-less car on another adapter while the diesel is active: a new profile, no mixing
+    st.select_for_vin("WF0XXXTTFXDM00001", port=usb)
+    other = st.create("Old car", activate=False)
+    st.update(other["id"], connection={"port": "/dev/ttyUSB1"})
+    st.activate(diesel["id"])
+    new = st.select_for_vin(None, port=bt2)
+    assert new["id"] not in (petrol["id"], diesel["id"], other["id"]) and new["name"] == "Car without VIN"

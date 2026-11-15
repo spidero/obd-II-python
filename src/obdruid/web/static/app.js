@@ -191,6 +191,7 @@ function applyState(s) {
   }
   if (s.vehicle) {
     const changed = ui.vehicle && ui.vehicle.id !== s.vehicle.id;
+    if (!ui.vehicle || changed || $("#car-switch").value !== s.vehicle.id) loadCarSwitch();
     ui.vehicle = s.vehicle;
     showLastConnection();
     if (changed && s.state === "connected" && prev === "connected") loadLayout().then(() => { buildTiles(); sendLiveConfig(); });
@@ -1212,14 +1213,7 @@ async function loadPorts() {
   } catch { /* ignore */ }
 }
 
-$("#conn-form").addEventListener("submit", async e => {
-  e.preventDefault();
-  const body = {
-    port: $("#in-port").value.trim() || null,
-    baudrate: $("#in-baud").value ? parseInt($("#in-baud").value, 10) : null,
-    protocol: $("#in-protocol").value || null,
-    simulate: $("#in-sim").checked,
-  };
+async function connectWith(body) {
   applyState({ state: "connecting", error: null, settings: body });
   closeLive();
   try {
@@ -1227,6 +1221,16 @@ $("#conn-form").addEventListener("submit", async e => {
     toast("Connected");
     showTab("dash");
   } catch (err) { toast(err.message, true); pollState(); }
+}
+
+$("#conn-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  await connectWith({
+    port: $("#in-port").value.trim() || null,
+    baudrate: $("#in-baud").value ? parseInt($("#in-baud").value, 10) : null,
+    protocol: $("#in-protocol").value || null,
+    simulate: $("#in-sim").checked,
+  });
 });
 
 $("#btn-disconnect").addEventListener("click", async () => {
@@ -1298,6 +1302,52 @@ $("#btn-bt-scan").addEventListener("click", async () => {
     msg.textContent = t(e.message);
   } finally {
     btn.disabled = false;
+  }
+});
+
+// ---------------------------------------------------------------- car switcher (header)
+// Each profile remembers the adapter that last worked, so picking a car also connects to it.
+let carList = [];
+async function loadCarSwitch() {
+  try {
+    const data = await api("/api/vehicles");
+    carList = data.vehicles;
+    const sel = $("#car-switch");
+    sel.replaceChildren(...carList.map(v => {
+      const port = (v.connection && v.connection.port) || "";
+      const via = v.simulator ? " · " + t("simulator") : port.startsWith("ble://") ? " · BLE"
+        : port.startsWith("rfcomm://") ? " · Bluetooth" : port.startsWith("socket://") ? " · Wi-Fi" : port ? " · USB" : "";
+      return el("option", { value: v.id }, v.name + via);
+    }));
+    sel.value = data.active;
+  } catch { /* the switcher is optional */ }
+}
+
+$("#car-switch").addEventListener("focus", loadCarSwitch);
+$("#car-switch").addEventListener("change", async e => {
+  const car = carList.find(v => v.id === e.target.value);
+  if (!car) return;
+  const sel = e.target;
+  sel.disabled = true;
+  try {
+    await api(`/api/vehicles/${car.id}/activate`, { method: "POST" });
+    const c = car.connection || {};
+    if (car.simulator) {
+      toast(t("Connecting to {name}…", { name: car.name }));
+      await connectWith({ port: null, baudrate: null, protocol: null, simulate: true });
+    } else if (c.port) {
+      toast(t("Connecting to {name}…", { name: car.name }));
+      await connectWith({ port: c.port, baudrate: c.baudrate || null, protocol: c.protocol || null, simulate: false });
+    } else {
+      pollState();
+      toast(t("No saved adapter for {name} – connect it once in the Connection tab.", { name: car.name }));
+      showTab("conn");
+    }
+  } catch (err) {
+    toast(err.message, true);
+  } finally {
+    sel.disabled = false;
+    loadCarSwitch();
   }
 });
 
