@@ -520,10 +520,23 @@ def web(
 
 
 @app.command()
-def gui(ctx: typer.Context):
+def gui(
+    ctx: typer.Context,
+    remote: Optional[str] = typer.Option(
+        None, "--remote", "-r", envvar="OBD_REMOTE",
+        help="Show the web UI of another machine instead, e.g. a Pi with the adapter: "
+             "raspberrypi.local or http://192.168.1.50:8090 (port 8090 is the default)."),
+):
     """Start the desktop app (the web interface in a window)."""
-    from .gui import run
+    from .gui import RemoteError, run, run_remote
 
+    if remote:
+        try:
+            run_remote(remote)
+        except RemoteError as e:
+            err.print(f"[red]{e}[/]")
+            raise typer.Exit(1)
+        return
     run(_settings(ctx))
 
 

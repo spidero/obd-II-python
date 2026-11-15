@@ -88,12 +88,26 @@ obd-tool health -d 60 --html report.html --json
 obd-tool web                         # web UI on http://localhost:8090
 obd-tool web --host 0.0.0.0          # ...reachable from the local network
 obd-tool gui                         # desktop window
+obd-tool gui --remote raspberrypi.local   # desktop window showing another machine's web UI
 obd-tool --sim live                  # anything above, against the simulator
 ```
 
 Options can also be set with environment variables: `OBD_PORT`, `OBD_BAUD`,
-`OBD_PROTOCOL`, `OBD_SIM=1`, `OBD_WEB_HOST`, `OBD_WEB_PORT`.
+`OBD_PROTOCOL`, `OBD_SIM=1`, `OBD_WEB_HOST`, `OBD_WEB_PORT`, `OBD_REMOTE`.
 Use the stable `/dev/serial/by-id/...` path instead of `/dev/ttyUSB0` when possible.
+
+### Desktop window for a remote adapter
+
+When the adapter is plugged into another machine (for example a Raspberry/Orange Pi in the car
+running `obd-tool web --host 0.0.0.0`), the desktop app can show that machine instead of starting
+its own server:
+
+```bash
+obd-tool gui --remote 192.168.1.50          # http:// and port 8090 are added
+obd-tool gui --remote https://obd.example.com/   # a full URL is used as is
+```
+
+The app checks that an OBD Tool server answers at the address before opening the window.
 
 ### Health check
 
