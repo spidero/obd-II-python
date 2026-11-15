@@ -7,7 +7,10 @@ ISSUES_URL = REPO_URL + "/issues"
 
 # Ways to support the author: [{"name": "GitHub Sponsors", "url": "https://..."}].
 # Shown in the "About & support" window; empty = the donation section is hidden.
-SUPPORT_LINKS: list[dict] = []
+SUPPORT_LINKS: list[dict] = [
+    {"name": "GitHub Sponsors", "url": "https://github.com/sponsors/spidero"},
+    {"name": "PayPal", "url": "https://paypal.me/spidero"},
+]
 
 # status: tested | should work | not supported
 ADAPTERS = [

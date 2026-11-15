@@ -254,3 +254,12 @@ tests/                pytest, all against the simulator
 - MQTT publishing for Home Assistant
 - Custom / manufacturer PIDs from a file
 - Windows build, Bluetooth adapters
+
+## Support
+
+OBD Tool is free and open source. If it saved you a trip to the workshop, you can support its development:
+
+- [GitHub Sponsors](https://github.com/sponsors/spidero)
+- [PayPal](https://paypal.me/spidero)
+
+A star on GitHub, a bug report or telling a friend help too.
