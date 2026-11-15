@@ -50,7 +50,7 @@ Any ELM327 compatible adapter (USB, Bluetooth via `rfcomm`) should work through
 ## Install
 
 ```bash
-git clone git@github.com:spidero/obd-II-python.git
+git clone https://github.com/spidero/obd-II-python.git
 cd obd-II-python
 python3 -m venv --system-site-packages .venv
 .venv/bin/pip install -e ".[gui]"        # or ".[web]" without the desktop window
