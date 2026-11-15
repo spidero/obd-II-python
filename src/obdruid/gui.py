@@ -8,9 +8,12 @@ import threading
 import time
 import urllib.request
 import webbrowser
+from pathlib import Path
 from urllib.parse import urlsplit
 
 from .core import ConnectionSettings
+
+ICON = Path(__file__).parent / "web" / "static" / "logo-192.png"
 
 
 def _free_port() -> int:
@@ -42,7 +45,7 @@ DEFAULT_REMOTE_PORT = 8090
 
 
 class RemoteError(Exception):
-    """The remote OBD Tool server cannot be used."""
+    """The remote OBDruid server cannot be used."""
 
 
 def normalize_remote(address: str) -> str:
@@ -62,14 +65,14 @@ def normalize_remote(address: str) -> str:
 
 
 def check_remote(url: str, timeout: float = 5.0) -> dict:
-    """Make sure an OBD Tool web server answers at `url`; returns its /api/state."""
+    """Make sure an OBDruid web server answers at `url`; returns its /api/state."""
     try:
         with urllib.request.urlopen(url + "api/state", timeout=timeout) as response:
             state = json.loads(response.read().decode("utf-8"))
     except (OSError, ValueError) as e:
-        raise RemoteError(f"No OBD Tool server at {url} ({e}). Is `obd-tool web` running there?") from e
+        raise RemoteError(f"No OBDruid server at {url} ({e}). Is `obdruid web` running there?") from e
     if not isinstance(state, dict) or "state" not in state:
-        raise RemoteError(f"{url} answers, but it is not an OBD Tool server.")
+        raise RemoteError(f"{url} answers, but it is not an OBDruid server.")
     return state
 
 
@@ -78,11 +81,14 @@ def _open_window(title: str, url: str) -> bool:
     try:
         import webview  # pywebview
     except ImportError:
-        print("pywebview is not installed (pip install 'obd-tool[gui]'); opening the web browser instead.")
+        print("pywebview is not installed (pip install 'obdruid[gui]'); opening the web browser instead.")
         return False
     try:
         webview.create_window(title, url, width=1280, height=820, min_size=(420, 560))
-        webview.start()
+        try:
+            webview.start(icon=str(ICON))  # window/taskbar icon (GTK and Qt)
+        except TypeError:  # older pywebview without the icon argument
+            webview.start()
     except Exception as e:  # no GUI backend (GTK/Qt) available
         print(f"Could not open a window ({e}); opening the web browser instead.")
         return False
@@ -94,21 +100,21 @@ def run_remote(address: str) -> None:
     url = normalize_remote(address)
     state = check_remote(url)
     host = urlsplit(url).hostname
-    print(f"OBD Tool on {host}: {state.get('state')}")
-    if not _open_window(f"OBD Tool – {host}", url):
+    print(f"OBDruid on {host}: {state.get('state')}")
+    if not _open_window(f"OBDruid – {host}", url):
         webbrowser.open(url)
-        print(f"OBD Tool: {url}")
+        print(f"OBDruid: {url}")
 
 
 def run(settings: ConnectionSettings) -> None:
     server, thread, url = _start_server(settings, _free_port())
-    if _open_window("OBD Tool", url):
+    if _open_window("OBDruid", url):
         server.should_exit = True  # window closed -> stop the server
         thread.join(5)
         return
 
     webbrowser.open(url)
-    print(f"OBD Tool: {url}  (Ctrl+C to quit)")
+    print(f"OBDruid: {url}  (Ctrl+C to quit)")
     try:
         while thread.is_alive():
             thread.join(0.5)

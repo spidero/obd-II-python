@@ -3,8 +3,8 @@ requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "obd-tool"
-version = "0.3.0"
+name = "obdruid"
+version = "0.4.0"
 description = "OBD-II workshop tool: live data, reading and clearing trouble codes (CLI, web UI, desktop GUI)"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -25,23 +25,24 @@ web = [
     "uvicorn[standard]>=0.29",
 ]
 gui = [
-    "obd-tool[web]",
+    "obdruid[web]",
     "pywebview>=5",
 ]
 dev = [
-    "obd-tool[web]",
+    "obdruid[web]",
     "pytest>=8",
     "httpx>=0.27",
 ]
 
 [project.scripts]
-obd-tool = "obd_tool.cli:app"
+obdruid = "obdruid.cli:app"
+obd-tool = "obdruid.cli:app"  # old command name, kept for existing installs
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-obd_tool = ["web/static/*"]
+obdruid = ["web/static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

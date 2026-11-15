@@ -1,6 +1,6 @@
 import pytest
 
-from obd_tool.core import dtc
+from obdruid.core import dtc
 
 
 @pytest.mark.parametrize("code", ["P0133", "P0420", "C1234", "B0001", "U0100", "P2A00", "P3400"])

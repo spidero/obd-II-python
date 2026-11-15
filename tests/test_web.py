@@ -1,8 +1,8 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from obd_tool.core import ConnectionSettings
-from obd_tool.web.server import create_app
+from obdruid.core import ConnectionSettings
+from obdruid.web.server import create_app
 
 
 @pytest.fixture(scope="module")
@@ -14,7 +14,7 @@ def client():
 
 def test_static_index(client):
     r = client.get("/")
-    assert r.status_code == 200 and "OBD Tool" in r.text
+    assert r.status_code == 200 and "OBDruid" in r.text
     assert client.get("/app.js").status_code == 200
 
 

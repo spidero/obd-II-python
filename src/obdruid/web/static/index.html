@@ -3,15 +3,18 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>OBD Tool</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23f5a524'/%3E%3Cpath d='M7 20a9 9 0 0 1 18 0' stroke='%23111' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3Cpath d='M16 20l5-6' stroke='%23111' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+  <title>OBDruid</title>
+  <link rel="icon" href="logo.svg" type="image/svg+xml">
+  <link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="logo-180.png">
+  <meta name="theme-color" content="#15191e">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <header class="topbar">
     <div class="brand">
-      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7"/><path d="M7 20a9 9 0 0 1 18 0" /><path d="M16 20l5-6"/></svg>
-      <span>OBD&nbsp;Tool</span>
+      <img src="logo.svg" alt="" width="34" height="34">
+      <span>OBDruid</span>
     </div>
     <nav class="tabs" role="tablist">
       <button role="tab" data-tab="dash" aria-selected="true">Dashboard</button>
@@ -339,8 +342,8 @@
   <!-- Support window shown at start until a supporter key is active -->
   <dialog id="dlg-support">
     <form method="dialog" class="dialog">
-      <h3>Support OBD Tool</h3>
-      <p>OBD Tool is free, open source and has no ads.</p>
+      <h3>Support OBDruid</h3>
+      <p>OBDruid is free, open source and has no ads.</p>
       <p data-i18n-html>Support its development and get a <b>supporter key</b>: this window will no longer appear at start.</p>
       <div class="actions" id="support-links"></div>
       <p class="muted" id="support-how"></p>
@@ -359,7 +362,8 @@
   <!-- About & support -->
   <dialog id="dlg-about">
     <form method="dialog" class="dialog">
-      <h3>OBD Tool <span class="muted" id="about-version"></span></h3>
+      <div class="about-head"><img src="logo.svg" alt="OBDruid logo" width="72" height="72">
+        <h3>OBDruid <span class="muted" id="about-version"></span></h3></div>
       <p>Open source OBD-II workshop tool: live data, trouble codes, monitor tests and a vehicle health check.
         No account, no ads, works offline.</p>
       <div class="support" id="about-support">

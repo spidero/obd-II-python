@@ -1,8 +1,8 @@
 import pytest
 
-from obd_tool.core import ConnectionSettings, ObdSession
-from obd_tool.core.storage import Storage, StorageError
-from obd_tool.core.trip import LiveReader, TripComputer, fuel_flow, fuel_source, trip_params
+from obdruid.core import ConnectionSettings, ObdSession
+from obdruid.core.storage import Storage, StorageError
+from obdruid.core.trip import LiveReader, TripComputer, fuel_flow, fuel_source, trip_params
 
 
 # --------------------------------------------------------------------------- trip
@@ -110,3 +110,16 @@ def test_dashboard_layout_per_vehicle(tmp_path):
     st.save_dashboard(car, {"keys": ["RPM"], "tiles": {}, "sound": False})
     assert Storage(tmp_path).dashboard(car)["keys"] == ["RPM"]   # survives a restart
     assert st.dashboard(st.create("Other")["id"]) is None
+
+
+def test_data_dir_migrates_from_obd_tool(tmp_path, monkeypatch):
+    from obdruid.core.storage import default_data_dir
+    for var in ("OBDRUID_DATA", "OBD_TOOL_DATA"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    (tmp_path / "obd-tool").mkdir()
+    (tmp_path / "obd-tool" / "supporter.json").write_text("{}")
+    assert default_data_dir() == tmp_path / "obdruid"
+    assert (tmp_path / "obdruid" / "supporter.json").exists() and not (tmp_path / "obd-tool").exists()
+    monkeypatch.setenv("OBD_TOOL_DATA", str(tmp_path / "custom"))  # the old variable still works
+    assert default_data_dir() == tmp_path / "custom"

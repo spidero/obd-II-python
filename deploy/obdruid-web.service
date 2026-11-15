@@ -1,0 +1,24 @@
+# systemd unit: obdruid web UI reachable from the network.
+# Example for a user "pi" with the repo cloned to /home/pi/obdruid and a venv in .venv.
+# Adjust User, WorkingDirectory, ExecStart and OBD_PORT to your setup, then:
+#   sudo cp deploy/obdruid-web.service /etc/systemd/system/ && sudo systemctl enable --now obdruid-web
+[Unit]
+Description=OBDruid web UI
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=pi
+Group=dialout
+WorkingDirectory=/home/pi/obdruid
+# A stable adapter path from /dev/serial/by-id/ (list them with: obdruid ports).
+# Without OBD_PORT the adapter is detected automatically.
+#Environment=OBD_PORT=/dev/serial/by-id/usb-<your-adapter>-if00-port0
+Environment=OBD_WEB_HOST=0.0.0.0
+Environment=OBD_WEB_PORT=8090
+ExecStart=/home/pi/obdruid/.venv/bin/obdruid web
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

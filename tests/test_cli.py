@@ -2,7 +2,7 @@ import json
 
 from typer.testing import CliRunner
 
-from obd_tool.cli import app
+from obdruid.cli import app
 
 runner = CliRunner()
 

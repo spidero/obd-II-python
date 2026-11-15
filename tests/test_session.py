@@ -1,4 +1,4 @@
-from obd_tool.core import DEFAULT_DASHBOARD
+from obdruid.core import DEFAULT_DASHBOARD
 
 
 def test_adapter_info(session):

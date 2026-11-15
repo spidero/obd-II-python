@@ -8,7 +8,7 @@ COPYRIGHT = f"Copyright (C) 2026 {AUTHOR}"
 CONTACT_EMAIL = "piotr.skwarna@gmail.com"  # supporter keys and other private matters
 KEY_REQUEST_URL = f"mailto:{CONTACT_EMAIL}?subject=OBD%20Tool%20supporter%20key"
 
-REPO_URL = "https://github.com/spidero/obd-II-python"
+REPO_URL = "https://github.com/spidero/obdruid"
 ISSUES_URL = REPO_URL + "/issues"
 
 # Ways to support the author: [{"name": "GitHub Sponsors", "url": "https://..."}].

@@ -4,9 +4,9 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from fastapi.testclient import TestClient
 from typer.testing import CliRunner
 
-from obd_tool.cli import app as cli_app
-from obd_tool.core import ConnectionSettings, supporter
-from obd_tool.web.server import create_app
+from obdruid.cli import app as cli_app
+from obdruid.core import ConnectionSettings, supporter
+from obdruid.web.server import create_app
 
 
 @pytest.fixture
@@ -59,12 +59,12 @@ def test_storage(keypair, tmp_path):
 
 
 def test_web_api(keypair, tmp_path, monkeypatch):
-    monkeypatch.setenv("OBD_TOOL_DATA", str(tmp_path))
+    monkeypatch.setenv("OBDRUID_DATA", str(tmp_path))
     with TestClient(create_app(ConnectionSettings(simulate=True), connect=False)) as c:
         assert c.get("/api/supporter").json() == {"active": False}
         assert c.get("/api/about").json()["supporter"]["active"] is False
         r = c.post("/api/supporter", json={"key": "nope"})
-        assert r.status_code == 400 and "not an OBD Tool supporter key" in r.json()["detail"]
+        assert r.status_code == 400 and "not an OBDruid supporter key" in r.json()["detail"]
         key = supporter.sign("Jan K.", "1", "2026-11-15", keypair)
         assert c.post("/api/supporter", json={"key": key}).json()["name"] == "Jan K."
         assert "key" not in c.get("/api/supporter").json()  # the key itself is not handed out
@@ -74,7 +74,7 @@ def test_web_api(keypair, tmp_path, monkeypatch):
 
 
 def test_cli(keypair, tmp_path, monkeypatch):
-    monkeypatch.setenv("OBD_TOOL_DATA", str(tmp_path))
+    monkeypatch.setenv("OBDRUID_DATA", str(tmp_path))
     run = CliRunner().invoke
     assert "No supporter key" in run(cli_app, ["supporter"]).output
     assert run(cli_app, ["supporter", "OBDT1-x.y"]).exit_code == 1

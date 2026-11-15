@@ -1,4 +1,4 @@
-"""Command line interface: obd-tool info | live | dtc | tests | clear | health | history | pids | ports | sim | web | gui."""
+"""Command line interface: obdruid info | live | dtc | tests | clear | health | history | pids | ports | sim | web | gui."""
 
 from __future__ import annotations
 
@@ -69,7 +69,7 @@ def _select_vehicle(session: ObdSession):
 
 def _version(value: bool):
     if value:
-        console.print(f"obd-tool {__version__}\n{about.COPYRIGHT}, license {about.LICENSE}")
+        console.print(f"obdruid {__version__}\n{about.COPYRIGHT}, license {about.LICENSE}")
         raise typer.Exit()
 
 
@@ -176,7 +176,7 @@ def _fmt(value) -> str:
 @app.command()
 def live(
     ctx: typer.Context,
-    keys: Optional[List[str]] = typer.Argument(None, help="Parameters (keys from `obd-tool pids`). Default: the basic set."),
+    keys: Optional[List[str]] = typer.Argument(None, help="Parameters (keys from `obdruid pids`). Default: the basic set."),
     interval: float = typer.Option(0.5, "--interval", "-i", help="Interval between reads [s]."),
     count: int = typer.Option(0, "--count", "-n", help="Number of reads (0 = until Ctrl+C)."),
     csv_path: Optional[Path] = typer.Option(None, "--csv", help="Log readings to a CSV file."),
@@ -456,7 +456,7 @@ def health(
     if html:
         console.print(f"Saved: {html}")
     if saved:
-        console.print(f"[dim]Saved to the history as {saved['id']} (see `obd-tool history`).[/]")
+        console.print(f"[dim]Saved to the history as {saved['id']} (see `obdruid history`).[/]")
 
 
 @app.command()

@@ -1,7 +1,7 @@
 import pytest
 
-from obd_tool.core import ConnectionSettings, ObdSession
-from obd_tool.core.diag import monitor_name, parse_monitor, rate, read_freeze_frame, read_monitors, read_permanent
+from obdruid.core import ConnectionSettings, ObdSession
+from obdruid.core.diag import monitor_name, parse_monitor, rate, read_freeze_frame, read_monitors, read_permanent
 
 
 @pytest.mark.parametrize("value,lo,hi,status,margin", [

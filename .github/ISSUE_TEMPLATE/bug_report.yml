@@ -17,8 +17,8 @@ body:
     id: version
     attributes:
       label: Version
-      description: Output of `obd-tool --version`
-      placeholder: obd-tool 0.3.0
+      description: Output of `obdruid --version`
+      placeholder: obdruid 0.3.0
     validations:
       required: true
   - type: dropdown
@@ -38,17 +38,17 @@ body:
     id: adapter
     attributes:
       label: Adapter
-      description: Brand and model, USB or Bluetooth, and the port from `obd-tool ports`
+      description: Brand and model, USB or Bluetooth, and the port from `obdruid ports`
       placeholder: Vgate vLinker FS, USB, /dev/ttyUSB0
   - type: input
     id: car
     attributes:
       label: Car
-      description: Make, model, year, petrol/diesel and the protocol from `obd-tool info`
+      description: Make, model, year, petrol/diesel and the protocol from `obdruid info`
       placeholder: Skoda Octavia 2012, petrol, ISO 15765-4 (CAN 11/500)
   - type: textarea
     id: log
     attributes:
       label: Log
-      description: Run the failing command with `-v`, e.g. `obd-tool -v info`, and paste the output.
+      description: Run the failing command with `-v`, e.g. `obdruid -v info`, and paste the output.
       render: text

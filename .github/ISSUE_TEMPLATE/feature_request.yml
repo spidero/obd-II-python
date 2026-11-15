@@ -1,5 +1,5 @@
 name: Feature request
-description: Suggest an idea for OBD Tool
+description: Suggest an idea for OBDruid
 labels: [enhancement]
 body:
   - type: textarea
@@ -13,4 +13,4 @@ body:
     id: idea
     attributes:
       label: Your idea
-      description: How could OBD Tool help? Other programs that do it well are useful references.
+      description: How could OBDruid help? Other programs that do it well are useful references.

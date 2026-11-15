@@ -1,4 +1,4 @@
-// OBD Tool web UI - plain JS, no external dependencies (works offline in the car).
+// OBDruid web UI - plain JS, no external dependencies (works offline in the car).
 "use strict";
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -1111,8 +1111,8 @@ $("#btn-about").addEventListener("click", async () => {
     const links = $("#about-support-links");
     links.replaceChildren(...a.support.map(l => el("a", { class: "btn btn-primary", href: l.url, target: "_blank", rel: "noopener", text: l.name })));
     $("#about-support-text").textContent = t(a.support.length
-      ? "OBD Tool is free and open source. If it saved you a trip to the workshop, you can support its development:"
-      : "OBD Tool is free and open source. A star on GitHub, a bug report or telling a friend all help.");
+      ? "OBDruid is free and open source. If it saved you a trip to the workshop, you can support its development:"
+      : "OBDruid is free and open source. A star on GitHub, a bug report or telling a friend all help.");
     const lic = a.supporter && a.supporter.active;
     $("#about-licensed").hidden = !lic;
     $("#about-licensed").textContent = lic ? t("Licensed to: {name}", { name: a.supporter.name }) : "";

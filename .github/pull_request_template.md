@@ -11,5 +11,5 @@
 ## Checklist
 
 - [ ] No VIN or other personal data in code, logs or screenshots
-- [ ] New UI texts are added to `src/obd_tool/web/static/pl.json`
+- [ ] New UI texts are added to `src/obdruid/web/static/pl.json`
 - [ ] README updated if the behaviour or options changed

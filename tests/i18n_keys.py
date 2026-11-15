@@ -6,7 +6,7 @@ import re
 from html.parser import HTMLParser
 from pathlib import Path
 
-STATIC = Path(__file__).parent.parent / "src" / "obd_tool" / "web" / "static"
+STATIC = Path(__file__).parent.parent / "src" / "obdruid" / "web" / "static"
 ATTRS = ("title", "placeholder", "aria-label")
 VOID = {"meta", "link", "input", "br", "img", "hr"}
 

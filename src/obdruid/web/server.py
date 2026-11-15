@@ -173,7 +173,7 @@ def create_app(settings: Optional[ConnectionSettings] = None, connect: bool = Tr
         yield
         state.disconnect()
 
-    app = FastAPI(title="OBD Tool", version=__version__, lifespan=lifespan)
+    app = FastAPI(title="OBDruid", version=__version__, lifespan=lifespan)
     app.state.obd = state
 
     def guarded(fn, *args):
@@ -515,5 +515,5 @@ def run(settings: ConnectionSettings, host: str = "127.0.0.1", port: int = 8090,
 
     app = create_app(settings, connect=connect)
     shown = "localhost" if host in ("127.0.0.1", "0.0.0.0") else host
-    print(f"OBD Tool: http://{shown}:{port}/  (Ctrl+C to quit)")
+    print(f"OBDruid: http://{shown}:{port}/  (Ctrl+C to quit)")
     uvicorn.run(app, host=host, port=port, log_level="warning")

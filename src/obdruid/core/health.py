@@ -196,7 +196,7 @@ def _fmt(v: float, unit: str = "", decimals: int = 1) -> str:
 
 # --------------------------------------------------------------------------- rules
 # Every text is a template with {named} parameters, so the UI can show it in another
-# language (see obd_tool/i18n.py). Parameters are ready-made strings or lists of strings.
+# language (see obdruid/i18n.py). Parameters are ready-made strings or lists of strings.
 def _render(template: str, params: dict) -> str:
     shown = {k: ", ".join(v) if isinstance(v, list) else v for k, v in params.items()}
     return template.format(**shown) if template else ""

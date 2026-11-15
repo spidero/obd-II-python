@@ -6,7 +6,7 @@ Everything is plain JSON under one data directory:
     vehicles/<id>/dashboard.json       dashboard layout of that vehicle
     vehicles/<id>/history/<id>.json    health reports, pre-clear backups, trips
 
-The directory is $OBD_TOOL_DATA, or $XDG_DATA_HOME/obd-tool, or ~/.local/share/obd-tool.
+The directory is $OBDRUID_DATA, or $XDG_DATA_HOME/obdruid, or ~/.local/share/obdruid.
 """
 
 from __future__ import annotations
@@ -26,10 +26,17 @@ _ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
 
 
 def default_data_dir() -> Path:
-    if os.environ.get("OBD_TOOL_DATA"):
-        return Path(os.environ["OBD_TOOL_DATA"])
-    base = os.environ.get("XDG_DATA_HOME") or os.path.join(os.path.expanduser("~"), ".local", "share")
-    return Path(base) / "obd-tool"
+    for var in ("OBDRUID_DATA", "OBD_TOOL_DATA"):  # OBD_TOOL_DATA: name used before the rename to OBDruid
+        if os.environ.get(var):
+            return Path(os.environ[var])
+    base = Path(os.environ.get("XDG_DATA_HOME") or os.path.join(os.path.expanduser("~"), ".local", "share"))
+    new, old = base / "obdruid", base / "obd-tool"
+    if not new.exists() and old.is_dir():
+        try:
+            old.rename(new)  # keep vehicles, history and the supporter key from obd-tool
+        except OSError:
+            return old
+    return new
 
 
 def _now() -> str:

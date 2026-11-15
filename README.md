@@ -1,16 +1,22 @@
-# OBD Tool
+<p align="center">
+  <img src="src/obdruid/web/static/logo.svg" alt="OBDruid logo" width="160">
+</p>
 
-[![Tests](https://github.com/spidero/obd-II-python/actions/workflows/tests.yml/badge.svg)](https://github.com/spidero/obd-II-python/actions/workflows/tests.yml)
+<h1 align="center">OBDruid</h1>
 
-_by Piotr Skwarna · GPL-2.0-or-later_
+<p align="center">
+  <b>Open-source OBD-II workshop tool</b> – reads your car's signs and tells what ails it.<br>
+  <a href="https://github.com/spidero/obdruid/actions/workflows/tests.yml"><img src="https://github.com/spidero/obdruid/actions/workflows/tests.yml/badge.svg" alt="Tests"></a>
+  · by Piotr Skwarna · GPL-2.0-or-later
+</p>
 
 A small OBD-II workshop tool in Python: live data, reading and clearing trouble codes,
 freeze frame, on-board monitor tests (mode 06), readiness monitors, fuel consumption and a
 **vehicle health check** with a 0–100 score. One core, three front ends:
 
-- **CLI** – `obd-tool info | live | dtc | tests | clear | health | history | pids | ports | supporter`
-- **Web UI** – `obd-tool web`, open it from a laptop or a phone
-- **Desktop GUI** – `obd-tool gui`, the same UI in a native window (pywebview)
+- **CLI** – `obdruid info | live | dtc | tests | clear | health | history | pids | ports | supporter`
+- **Web UI** – `obdruid web`, open it from a laptop or a phone
+- **Desktop GUI** – `obdruid gui`, the same UI in a native window (pywebview)
 
 The web UI and the desktop GUI are available in **English and Polish** – switch with the `EN`/`PL`
 button in the top bar.
@@ -27,27 +33,30 @@ A built-in **ELM327 simulator** (`--sim`) lets you run everything without a car.
 |---|---|---|---|
 | ![Gauges](docs/screenshots/sim-dashboard-gauges.png) | ![Tests](docs/screenshots/sim-monitor-tests.png) | ![Freeze frame](docs/screenshots/sim-freeze-frame.png) | ![Compare](docs/screenshots/sim-history-compare.png) |
 
+> Formerly *OBD Tool* (`obd-tool`). The old command still works as an alias, and the data folder
+> `~/.local/share/obd-tool` is moved to `~/.local/share/obdruid` automatically.
+
 ## Quick start
 
 1. **Install** (Linux, Python 3.10+; details in [Install](#install)):
    ```bash
-   git clone https://github.com/spidero/obd-II-python.git && cd obd-II-python
+   git clone https://github.com/spidero/obdruid.git && cd obdruid
    python3 -m venv --system-site-packages .venv && .venv/bin/pip install -e ".[gui]"
    ```
 2. **Try it without a car** – the built-in simulator plays a car with a few trouble codes:
    ```bash
-   .venv/bin/obd-tool --sim gui
+   .venv/bin/obdruid --sim gui
    ```
 3. **Connect a car:** plug an ELM327 adapter into the OBD-II socket (under the dashboard) and into
-   USB, turn the ignition on (or start the engine) and run `.venv/bin/obd-tool gui`. The adapter is
-   found automatically; `obd-tool ports` lists the serial ports if it is not.
+   USB, turn the ignition on (or start the engine) and run `.venv/bin/obdruid gui`. The adapter is
+   found automatically; `obdruid ports` lists the serial ports if it is not.
 4. **First checks:** the *Trouble codes* tab shows stored and pending codes with descriptions,
    *Health check* (engine warm and idling) gives a 0–100 score with explanations.
 
-No adapter at your desk? Plug it into a Raspberry/Orange Pi in the car, run `obd-tool web --host 0.0.0.0`
-there and open the UI from a phone or laptop, or use `obd-tool gui --remote <pi-address>`.
+No adapter at your desk? Plug it into a Raspberry/Orange Pi in the car, run `obdruid web --host 0.0.0.0`
+there and open the UI from a phone or laptop, or use `obdruid gui --remote <pi-address>`.
 
-At start the app shows a short *Support OBD Tool* window – see [Support](#support).
+At start the app shows a short *Support OBDruid* window – see [Support](#support).
 
 ## Supported adapters
 
@@ -76,8 +85,8 @@ Any ELM327 compatible adapter (USB, Bluetooth via `rfcomm`) should work through
 ## Install
 
 ```bash
-git clone https://github.com/spidero/obd-II-python.git
-cd obd-II-python
+git clone https://github.com/spidero/obdruid.git
+cd obdruid
 python3 -m venv --system-site-packages .venv
 .venv/bin/pip install -e ".[gui]"        # or ".[web]" without the desktop window
 ```
@@ -86,34 +95,34 @@ System packages (Debian/Ubuntu):
 
 ```bash
 sudo apt install python3-venv                       # virtual environments
-sudo apt install python3-gi gir1.2-gtk-3.0 gir1.2-webkit2-4.1   # only for `obd-tool gui`
+sudo apt install python3-gi gir1.2-gtk-3.0 gir1.2-webkit2-4.1   # only for `obdruid gui`
 sudo usermod -aG dialout $USER                      # access to /dev/ttyUSB*, log in again
 ```
 
 `--system-site-packages` is needed for the GUI because the GTK bindings (`gi`) come from
-the system, not from pip. Without them `obd-tool gui` falls back to the web browser.
+the system, not from pip. Without them `obdruid gui` falls back to the web browser.
 
 ## Usage
 
 ```bash
-obd-tool ports                       # find the adapter
-obd-tool -p /dev/ttyUSB0 info        # adapter, protocol, VIN, MIL, readiness monitors
-obd-tool -p /dev/ttyUSB0 live        # live data (Ctrl+C to stop)
-obd-tool live RPM SPEED COOLANT_TEMP -i 0.25 --csv drive.csv
-obd-tool pids                        # parameters supported by the car
-obd-tool live RPM FUEL_FLOW FUEL_ECONOMY TRIP_DISTANCE   # calculated fuel use and trip values
-obd-tool dtc                         # stored, pending and permanent codes + freeze frame
-obd-tool dtc --json
-obd-tool tests                       # on-board monitor test results (mode 06)
-obd-tool clear                       # clear codes (asks for confirmation, saves a backup first)
-obd-tool history                     # saved health reports, pre-clear backups and trips
-obd-tool health                      # 30 s health check, score 0-100
-obd-tool health -d 60 --html report.html --json
-obd-tool web                         # web UI on http://localhost:8090
-obd-tool web --host 0.0.0.0          # ...reachable from the local network
-obd-tool gui                         # desktop window
-obd-tool gui --remote raspberrypi.local   # desktop window showing another machine's web UI
-obd-tool --sim live                  # anything above, against the simulator
+obdruid ports                       # find the adapter
+obdruid -p /dev/ttyUSB0 info        # adapter, protocol, VIN, MIL, readiness monitors
+obdruid -p /dev/ttyUSB0 live        # live data (Ctrl+C to stop)
+obdruid live RPM SPEED COOLANT_TEMP -i 0.25 --csv drive.csv
+obdruid pids                        # parameters supported by the car
+obdruid live RPM FUEL_FLOW FUEL_ECONOMY TRIP_DISTANCE   # calculated fuel use and trip values
+obdruid dtc                         # stored, pending and permanent codes + freeze frame
+obdruid dtc --json
+obdruid tests                       # on-board monitor test results (mode 06)
+obdruid clear                       # clear codes (asks for confirmation, saves a backup first)
+obdruid history                     # saved health reports, pre-clear backups and trips
+obdruid health                      # 30 s health check, score 0-100
+obdruid health -d 60 --html report.html --json
+obdruid web                         # web UI on http://localhost:8090
+obdruid web --host 0.0.0.0          # ...reachable from the local network
+obdruid gui                         # desktop window
+obdruid gui --remote raspberrypi.local   # desktop window showing another machine's web UI
+obdruid --sim live                  # anything above, against the simulator
 ```
 
 Options can also be set with environment variables: `OBD_PORT`, `OBD_BAUD`,
@@ -123,15 +132,15 @@ Use the stable `/dev/serial/by-id/...` path instead of `/dev/ttyUSB0` when possi
 ### Desktop window for a remote adapter
 
 When the adapter is plugged into another machine (for example a Raspberry/Orange Pi in the car
-running `obd-tool web --host 0.0.0.0`), the desktop app can show that machine instead of starting
+running `obdruid web --host 0.0.0.0`), the desktop app can show that machine instead of starting
 its own server:
 
 ```bash
-obd-tool gui --remote 192.168.1.50          # http:// and port 8090 are added
-obd-tool gui --remote https://obd.example.com/   # a full URL is used as is
+obdruid gui --remote 192.168.1.50          # http:// and port 8090 are added
+obdruid gui --remote https://obd.example.com/   # a full URL is used as is
 ```
 
-The app checks that an OBD Tool server answers at the address before opening the window.
+The app checks that an OBDruid server answers at the address before opening the window.
 
 ### Health check
 
@@ -160,8 +169,8 @@ not a replacement for a workshop diagnosis.
 Try it without a car using simulator faults:
 
 ```bash
-obd-tool --sim --sim-no-codes health -d 15                       # healthy car
-obd-tool --sim --sim-fault lean --sim-fault catalyst health -d 15
+obdruid --sim --sim-no-codes health -d 15                       # healthy car
+obdruid --sim --sim-fault lean --sim-fault catalyst health -d 15
 ```
 
 Faults: `lean`, `rich`, `charging`, `overheat`, `rough_idle`, `lazy_o2`, `catalyst`, `cleared`.
@@ -193,17 +202,17 @@ PID 5E. “Save & reset trip” keeps the trip in the history.
 ### Vehicle profiles and history
 
 Each vehicle has a profile (name, VIN, fuel, notes), its own dashboard layout and a history of health
-reports, pre-clear backups and trips – see the History tab or `obd-tool history`. Cars that report a
+reports, pre-clear backups and trips – see the History tab or `obdruid history`. Cars that report a
 VIN are recognised automatically; the simulator always uses its own “Simulator” profile. Tick two
 health reports to compare them, for example before and after a repair. Files are plain JSON in
-`~/.local/share/obd-tool` (override with `OBD_TOOL_DATA`).
+`~/.local/share/obdruid` (override with `OBDRUID_DATA`).
 
 ### Languages
 
 The `EN`/`PL` button in the top bar switches the web UI (and the printable health report) between
 English and Polish; the choice is remembered in the browser, and a Polish browser starts in Polish.
-English texts are the keys of one dictionary, `src/obd_tool/web/static/pl.json`, used by both the
-browser and the server (`obd_tool/i18n.py`). Health findings are stored as templates with parameters,
+English texts are the keys of one dictionary, `src/obdruid/web/static/pl.json`, used by both the
+browser and the server (`obdruid/i18n.py`). Health findings are stored as templates with parameters,
 so saved reports follow the current language. To add a language, copy `pl.json`, translate it and add
 its code to `LANGUAGES` in `i18n.py` and to the button in `app.js`. Not translated: the command line,
 the trouble code descriptions (they come from python-OBD's English database) and the API messages.
@@ -246,13 +255,13 @@ network.
 
 ### Run as a service (Raspberry/Orange Pi)
 
-`deploy/obd-tool-web.service` starts the web UI on boot, listening on all interfaces. It is an
-example for the user `pi` with the repo in `/home/pi/obd-II-python` – edit `User`, the paths and
+`deploy/obdruid-web.service` starts the web UI on boot, listening on all interfaces. It is an
+example for the user `pi` with the repo in `/home/pi/obdruid` – edit `User`, the paths and
 optionally `OBD_PORT` first:
 
 ```bash
-sudo cp deploy/obd-tool-web.service /etc/systemd/system/
-sudo systemctl enable --now obd-tool-web
+sudo cp deploy/obdruid-web.service /etc/systemd/system/
+sudo systemctl enable --now obdruid-web
 ```
 
 ## Development
@@ -272,7 +281,7 @@ docker run --rm -v "$PWD":/app -w /app python:3.12-slim \
 Layout:
 
 ```
-src/obd_tool/
+src/obdruid/
   core/session.py     thread-safe OBD session on top of python-OBD
   core/simulator.py   ELM327 emulator on a pseudo terminal
   core/pids.py        parameter catalogue (labels, units, groups)
@@ -300,7 +309,7 @@ tests/                pytest, all against the simulator
 
 ## Support
 
-OBD Tool is free, open source and has no ads.
+OBDruid is free, open source and has no ads.
 If it saved you a trip to the workshop, please support its development:
 
 - [GitHub Sponsors](https://github.com/sponsors/spidero)
@@ -308,16 +317,16 @@ If it saved you a trip to the workshop, please support its development:
 
 <img src="docs/screenshots/sim-support.png" alt="Support window" width="480">
 
-**Supporter key.** The web UI and the desktop app show a *Support OBD Tool* window at every start.
+**Supporter key.** The web UI and the desktop app show a *Support OBDruid* window at every start.
 Supporters receive a personal key that hides it and shows *Licensed to: your name* in *About*.
 To get one, support the project and write to [piotr.skwarna@gmail.com](mailto:piotr.skwarna@gmail.com?subject=OBD%20Tool%20supporter%20key)
 with the payment confirmation and the name to show in the program; the key comes by e-mail.
 Activate the key in that window (*I have a key*), in *About*, or in a terminal:
 
 ```bash
-obd-tool supporter OBDT1-...      # activate (on a Pi: once for all browsers)
-obd-tool supporter                # show the current key
-obd-tool supporter --remove
+obdruid supporter OBDT1-...      # activate (on a Pi: once for all browsers)
+obdruid supporter                # show the current key
+obdruid supporter --remove
 ```
 
 Keys are checked offline – no account and no internet connection needed. A star on GitHub,
@@ -333,7 +342,7 @@ Security problems: [SECURITY.md](SECURITY.md).
 
 Copyright (C) 2026 Piotr Skwarna
 
-OBD Tool is free software: you can redistribute it and/or modify it under the terms of the
+OBDruid is free software: you can redistribute it and/or modify it under the terms of the
 GNU General Public License as published by the Free Software Foundation, either
 [version 2 of the License](LICENSE), or (at your option) any later version
 (SPDX: `GPL-2.0-or-later`).
@@ -342,6 +351,6 @@ This program is distributed in the hope that it will be useful, but WITHOUT ANY 
 without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 See the GNU General Public License for more details.
 
-OBD Tool uses [python-OBD](https://github.com/brendan-w/python-OBD) (GPL-2.0-only); bundled builds
+OBDruid uses [python-OBD](https://github.com/brendan-w/python-OBD) (GPL-2.0-only); bundled builds
 that include it, such as a standalone Windows `.exe`, are therefore distributed under GPL version 2.
 The other dependencies (pyserial, Typer, Rich, FastAPI, Uvicorn, pywebview) use MIT or BSD licenses.

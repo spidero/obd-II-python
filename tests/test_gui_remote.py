@@ -1,9 +1,9 @@
 import pytest
 from typer.testing import CliRunner
 
-from obd_tool import gui
-from obd_tool.cli import app as cli_app
-from obd_tool.core import ConnectionSettings
+from obdruid import gui
+from obdruid.cli import app as cli_app
+from obdruid.core import ConnectionSettings
 
 
 @pytest.mark.parametrize("address,url", [
@@ -31,7 +31,7 @@ def test_check_remote_and_window(monkeypatch):
         opened = []
         monkeypatch.setattr(gui, "_open_window", lambda title, u: opened.append((title, u)) or True)
         gui.run_remote(url)
-        assert opened == [("OBD Tool – 127.0.0.1", url)]
+        assert opened == [("OBDruid – 127.0.0.1", url)]
     finally:
         server.should_exit = True
         thread.join(5)
@@ -41,4 +41,4 @@ def test_cli_remote_unreachable():
     port = gui._free_port()  # nothing listens there
     r = CliRunner().invoke(cli_app, ["gui", "--remote", f"127.0.0.1:{port}"])
     assert r.exit_code == 1
-    assert "No OBD Tool server" in r.output
+    assert "No OBDruid server" in r.output

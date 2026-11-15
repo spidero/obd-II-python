@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Security problem
-    url: https://github.com/spidero/obd-II-python/security/advisories/new
+    url: https://github.com/spidero/obdruid/security/advisories/new
     about: Please report security problems privately.
   - name: Support the project
     url: https://github.com/sponsors/spidero
-    about: OBD Tool is free; support helps its development.
+    about: OBDruid is free; support helps its development.

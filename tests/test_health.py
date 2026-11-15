@@ -4,12 +4,12 @@ import pytest
 from fastapi.testclient import TestClient
 from typer.testing import CliRunner
 
-from obd_tool.cli import app as cli_app
-from obd_tool.core import ConnectionSettings, ObdSession
-from obd_tool.core.health import Snapshot, _crossings, evaluate, run_check
-from obd_tool.core.models import Dtc, DtcReport, ReadinessTest, VehicleStatus
-from obd_tool.core.report_html import render_html
-from obd_tool.web.server import create_app
+from obdruid.cli import app as cli_app
+from obdruid.core import ConnectionSettings, ObdSession
+from obdruid.core.health import Snapshot, _crossings, evaluate, run_check
+from obdruid.core.models import Dtc, DtcReport, ReadinessTest, VehicleStatus
+from obdruid.core.report_html import render_html
+from obdruid.web.server import create_app
 
 
 def snapshot(samples=None, counters=None, stored=(), pending=(), mil=False, incomplete=()):

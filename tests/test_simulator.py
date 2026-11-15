@@ -3,7 +3,7 @@ import select
 import termios
 import tty
 
-from obd_tool.core.simulator import Elm327Emulator
+from obdruid.core.simulator import Elm327Emulator
 
 
 def talk(fd, cmd, timeout=3.0):

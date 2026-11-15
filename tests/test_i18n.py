@@ -7,15 +7,15 @@ import pytest
 from fastapi.testclient import TestClient
 
 from i18n_keys import STATIC, html_keys, js_keys
-from obd_tool import about
-from obd_tool.core import ConnectionSettings, ObdSession, diag, dtc
-from obd_tool.core.health import DISCLAIMER, HealthReport, evaluate, run_check
-from obd_tool.core.models import MonitorReport
-from obd_tool.core.pids import CATALOG, READINESS_LABELS
-from obd_tool.core.report_html import render_html
-from obd_tool.core.trip import GROUP, TRIP_PARAMS
-from obd_tool.i18n import finding_text, tr
-from obd_tool.web.server import create_app
+from obdruid import about
+from obdruid.core import ConnectionSettings, ObdSession, diag, dtc
+from obdruid.core.health import DISCLAIMER, HealthReport, evaluate, run_check
+from obdruid.core.models import MonitorReport
+from obdruid.core.pids import CATALOG, READINESS_LABELS
+from obdruid.core.report_html import render_html
+from obdruid.core.trip import GROUP, TRIP_PARAMS
+from obdruid.i18n import finding_text, tr
+from obdruid.web.server import create_app
 from test_health import snapshot
 
 PL = json.loads((STATIC / "pl.json").read_text(encoding="utf-8"))

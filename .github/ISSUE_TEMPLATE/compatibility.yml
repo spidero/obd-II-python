@@ -1,5 +1,5 @@
 name: Car / adapter report
-description: Tell us which car and adapter work (or do not work) with OBD Tool
+description: Tell us which car and adapter work (or do not work) with OBDruid
 labels: [compatibility]
 body:
   - type: markdown
@@ -30,7 +30,7 @@ body:
   - type: textarea
     id: info
     attributes:
-      label: Output of `obd-tool info`
+      label: Output of `obdruid info`
       description: Remove the VIN line if your car reports one.
       render: text
   - type: textarea

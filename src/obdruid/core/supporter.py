@@ -52,7 +52,7 @@ def verify(text: str, public_key: str = PUBLIC_KEY) -> SupporterKey:
 
     key = re.sub(r"\s+", "", text or "")  # keys are often pasted with line breaks
     if not key.startswith(PREFIX) or key.count(".") != 1:
-        raise InvalidKey("This is not an OBD Tool supporter key.")
+        raise InvalidKey("This is not an OBDruid supporter key.")
     payload_b64, signature_b64 = key[len(PREFIX):].split(".")
     try:
         payload, signature = _b64decode(payload_b64), _b64decode(signature_b64)
