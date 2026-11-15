@@ -282,6 +282,12 @@ OBD Tool is free and open source. If it saved you a trip to the workshop, you ca
 
 A star on GitHub, a bug report or telling a friend help too.
 
+## Contributing
+
+Bug reports, car/adapter reports, translations and code are welcome – see
+[CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md).
+Security problems: [SECURITY.md](SECURITY.md).
+
 ## License
 
 Copyright (C) 2026 Piotr Skwarna

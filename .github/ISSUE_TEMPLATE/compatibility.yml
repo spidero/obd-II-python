@@ -1,0 +1,40 @@
+name: Car / adapter report
+description: Tell us which car and adapter work (or do not work) with OBD Tool
+labels: [compatibility]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        These reports build the list of tested hardware. Please **do not post your VIN**.
+  - type: dropdown
+    id: result
+    attributes:
+      label: Result
+      options: [Works, Works partly, Does not work]
+    validations:
+      required: true
+  - type: input
+    id: car
+    attributes:
+      label: Car
+      placeholder: Skoda Octavia 2012, 1.4 TSI, petrol
+    validations:
+      required: true
+  - type: input
+    id: adapter
+    attributes:
+      label: Adapter
+      placeholder: Vgate vLinker FS (USB)
+    validations:
+      required: true
+  - type: textarea
+    id: info
+    attributes:
+      label: Output of `obd-tool info`
+      description: Remove the VIN line if your car reports one.
+      render: text
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: What works, what does not, number of live parameters, speed (PID/s) …

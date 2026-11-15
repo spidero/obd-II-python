@@ -1,0 +1,54 @@
+name: Bug report
+description: Something does not work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report! Please **remove your VIN** and other personal data from logs and screenshots.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect and what happened instead?
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `obd-tool --version`
+      placeholder: obd-tool 0.3.0
+    validations:
+      required: true
+  - type: dropdown
+    id: interface
+    attributes:
+      label: Where does it happen?
+      multiple: true
+      options: [CLI, Web UI, Desktop GUI, Simulator]
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: Operating system and installation
+      placeholder: Debian 12 on Raspberry Pi 4, pipx / Windows 11, exe
+  - type: input
+    id: adapter
+    attributes:
+      label: Adapter
+      description: Brand and model, USB or Bluetooth, and the port from `obd-tool ports`
+      placeholder: Vgate vLinker FS, USB, /dev/ttyUSB0
+  - type: input
+    id: car
+    attributes:
+      label: Car
+      description: Make, model, year, petrol/diesel and the protocol from `obd-tool info`
+      placeholder: Skoda Octavia 2012, petrol, ISO 15765-4 (CAN 11/500)
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: Run the failing command with `-v`, e.g. `obd-tool -v info`, and paste the output.
+      render: text
