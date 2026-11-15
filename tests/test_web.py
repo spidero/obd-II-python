@@ -127,3 +127,10 @@ def test_health_report_is_saved_to_history(client):
     assert client.delete(f"/api/history/{record['id']}").status_code == 200
     assert client.get(f"/api/history/{record['id']}").status_code == 404
     client.post("/api/disconnect")
+
+
+def test_static_files_are_revalidated():
+    with TestClient(create_app(ConnectionSettings(simulate=True), connect=False)) as c:
+        for path in ("/", "/style.css", "/app.js"):
+            r = c.get(path)
+            assert r.status_code == 200 and r.headers["cache-control"] == "no-cache"

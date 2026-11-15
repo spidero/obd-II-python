@@ -463,8 +463,17 @@ def create_app(settings: Optional[ConnectionSettings] = None, connect: bool = Tr
     async def obd_error_handler(request, exc: ObdError):
         return JSONResponse(status_code=502, content={"detail": str(exc)})
 
-    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+    app.mount("/", NoCacheStaticFiles(directory=STATIC_DIR, html=True), name="static")
     return app
+
+
+class NoCacheStaticFiles(StaticFiles):
+    """Static files the browser must revalidate (ETag), so an update never mixes new HTML with old CSS/JS."""
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
 
 
 def _safe_connect(state: AppState) -> None:
