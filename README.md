@@ -263,3 +263,13 @@ OBD Tool is free and open source. If it saved you a trip to the workshop, you ca
 - [PayPal](https://paypal.me/spidero)
 
 A star on GitHub, a bug report or telling a friend help too.
+
+## License
+
+OBD Tool's own code is released under the MIT license (see `pyproject.toml`).
+
+It depends on [python-OBD](https://github.com/brendan-w/python-OBD), which is licensed under
+**GPL-2.0-only**. Installing OBD Tool with `pip`/`pipx` keeps the two separate, but a bundled
+build that includes python-OBD (for example a standalone Windows `.exe`) is a combined work and is
+distributed under the terms of the GPL-2.0, with the full source code available in this repository.
+The other dependencies (pyserial, Typer, Rich, FastAPI, Uvicorn, pywebview) use MIT or BSD licenses.
