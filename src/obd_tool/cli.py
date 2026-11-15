@@ -520,6 +520,35 @@ def web(
 
 
 @app.command()
+def supporter(
+    key: Optional[str] = typer.Argument(None, help="Supporter key to activate (OBDT1-...)."),
+    remove: bool = typer.Option(False, "--remove", help="Remove the activated key."),
+):
+    """Show or activate the supporter key that hides the "Support the project" window."""
+    from .core import supporter as sup
+    from .core.storage import default_data_dir
+
+    root = default_data_dir()
+    if remove:
+        sup.remove(root)
+        console.print("Supporter key removed.")
+        return
+    if key:
+        try:
+            active = sup.save(root, key)
+        except sup.InvalidKey as e:
+            err.print(f"[red]{e}[/]")
+            raise typer.Exit(1)
+        console.print(f"[green]Thank you![/] Licensed to: {active.name}")
+        return
+    active = sup.load(root)
+    if active:
+        console.print(f"Licensed to: {active.name} (key {active.id}, issued {active.issued})")
+    else:
+        console.print("No supporter key. Support the project and get one: " + about.SUPPORT_LINKS[0]["url"])
+
+
+@app.command()
 def gui(
     ctx: typer.Context,
     remote: Optional[str] = typer.Option(

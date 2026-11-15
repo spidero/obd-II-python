@@ -400,3 +400,15 @@ dialog::backdrop { background: rgb(0 0 0 / .55); }
 
 .lang-btn { font: 700 .75rem var(--sans); color: var(--muted); letter-spacing: .04em; }
 .lang-btn:hover { border-color: var(--accent); color: var(--text); }
+
+/* ---------- support window and supporter key ---------- */
+#dlg-support .dialog { max-width: 34rem; }
+#support-key-box summary { cursor: pointer; color: var(--muted); margin-top: .25rem; }
+#support-key-box[open] summary { color: var(--text); }
+.key-field { display: flex; flex-direction: column; gap: .25rem; margin-top: .5rem; font-size: .9rem; color: var(--muted); }
+.key-field textarea {
+  font: .8rem var(--mono, monospace); padding: .5rem; resize: vertical; word-break: break-all;
+  background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 8px;
+}
+.key-error { color: var(--danger); font-size: .9rem; }
+.licensed { font-weight: 600; color: var(--ok); }

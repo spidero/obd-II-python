@@ -21,11 +21,16 @@ from ..core import DEFAULT_DASHBOARD, ConnectionSettings, ObdError, ObdSession, 
 from ..core.health import HealthReport, run_check
 from ..core.pids import DEFAULT_TILES
 from ..core.report_html import render_html
+from ..core import supporter
 from ..core.storage import FUELS, Storage, StorageError
 from ..core.trip import LiveReader, TripComputer
 
 log = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).parent / "static"
+
+
+class SupporterBody(BaseModel):
+    key: str
 
 
 class AppState:
@@ -349,11 +354,32 @@ def create_app(settings: Optional[ConnectionSettings] = None, connect: bool = Tr
             raise HTTPException(404, detail="Not a health report")
         return HTMLResponse(render_html(HealthReport.from_dict(record["data"]), lang))
 
+    def supporter_state() -> dict:
+        key = supporter.load(state.storage.root)
+        return {"active": key is not None, **(key.to_dict() if key else {})}
+
+    @app.get("/api/supporter")
+    def get_supporter():
+        return supporter_state()
+
+    @app.post("/api/supporter")
+    def post_supporter(body: SupporterBody):
+        try:
+            supporter.save(state.storage.root, body.key)
+        except supporter.InvalidKey as e:
+            raise HTTPException(400, str(e))
+        return supporter_state()
+
+    @app.delete("/api/supporter")
+    def delete_supporter():
+        supporter.remove(state.storage.root)
+        return supporter_state()
+
     @app.get("/api/about")
     def get_about():
         return {"version": __version__, "author": about.AUTHOR, "license": about.LICENSE, "repo": about.REPO_URL, "issues": about.ISSUES_URL,
                 "support": about.SUPPORT_LINKS, "adapters": about.ADAPTERS, "vehicles": about.VEHICLES_NOTE,
-                "data_dir": str(state.storage.root)}
+                "data_dir": str(state.storage.root), "supporter": supporter_state()}
 
     @app.get("/api/health/last")
     def get_health_last():

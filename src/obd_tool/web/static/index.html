@@ -336,6 +336,25 @@
     </form>
   </dialog>
 
+  <!-- Support window shown at start until a supporter key is active -->
+  <dialog id="dlg-support">
+    <form method="dialog" class="dialog">
+      <h3>Support OBD Tool</h3>
+      <p>OBD Tool is free, open source and has no ads. It is made by Piotr Skwarna in his spare time.</p>
+      <p data-i18n-html>Support its development and get a <b>supporter key</b>: this window will no longer appear at start.</p>
+      <div class="actions" id="support-links"></div>
+      <details id="support-key-box">
+        <summary>I have a key</summary>
+        <label class="key-field">Supporter key
+          <textarea id="in-supporter-key" rows="3" spellcheck="false" autocomplete="off" placeholder="OBDT1-…"></textarea>
+        </label>
+        <p class="key-error" id="support-key-error" hidden></p>
+        <div class="actions"><button type="button" class="btn btn-primary" id="btn-activate-key">Activate</button></div>
+      </details>
+      <div class="actions"><span class="spacer"></span><button class="btn" value="close">Close</button></div>
+    </form>
+  </dialog>
+
   <!-- About & support -->
   <dialog id="dlg-about">
     <form method="dialog" class="dialog">
@@ -346,6 +365,8 @@
         <h4>Support the project</h4>
         <p id="about-support-text"></p>
         <div class="actions" id="about-support-links"></div>
+        <p class="licensed" id="about-licensed" hidden></p>
+        <div class="actions"><button type="button" class="btn" id="btn-about-key">Enter a supporter key…</button></div>
       </div>
       <dl id="about-links"></dl>
       <div class="actions"><span class="spacer"></span><button class="btn btn-primary" value="ok">Close</button></div>

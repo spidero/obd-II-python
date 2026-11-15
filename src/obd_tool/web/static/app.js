@@ -1112,6 +1112,10 @@ $("#btn-about").addEventListener("click", async () => {
     $("#about-support-text").textContent = t(a.support.length
       ? "OBD Tool is free and open source. If it saved you a trip to the workshop, you can support its development:"
       : "OBD Tool is free and open source. A star on GitHub, a bug report or telling a friend all help.");
+    const lic = a.supporter && a.supporter.active;
+    $("#about-licensed").hidden = !lic;
+    $("#about-licensed").textContent = lic ? t("Licensed to: {name}", { name: a.supporter.name }) : "";
+    $("#btn-about-key").hidden = !!lic;
     const dl = $("#about-links");
     dl.replaceChildren(el("dt", { text: "Author" }), el("dd", { text: a.author }),
                        el("dt", { text: "License" }), el("dd", { text: a.license }));
@@ -1229,8 +1233,41 @@ $("#btn-disconnect").addEventListener("click", async () => {
   try { applyState(await api("/api/disconnect", { method: "POST" })); } catch (e) { toast(e.message, true); }
 });
 
+// ---------------------------------------------------------------- support window / supporter key
+async function showSupport(force = false) {
+  const a = await loadAbout();
+  if (a.supporter && a.supporter.active && !force) return;
+  $("#support-links").replaceChildren(...a.support.map(l =>
+    el("a", { class: "btn btn-primary", href: l.url, target: "_blank", rel: "noopener", text: l.name })));
+  $("#support-key-error").hidden = true;
+  if (force) $("#support-key-box").open = true;
+  const dlg = $("#dlg-support");
+  if (!dlg.open) dlg.showModal();
+}
+
+$("#btn-activate-key").addEventListener("click", async () => {
+  const error = $("#support-key-error");
+  error.hidden = true;
+  try {
+    const s = await api("/api/supporter", { method: "POST", body: { key: $("#in-supporter-key").value } });
+    aboutData = null;  // reload the About data with the new state
+    $("#in-supporter-key").value = "";
+    $("#dlg-support").close();
+    toast(t("Thank you! Licensed to: {name}", { name: s.name }));
+  } catch (e) {
+    error.textContent = t(e.message);
+    error.hidden = false;
+  }
+});
+
+$("#btn-about-key").addEventListener("click", () => {
+  $("#dlg-about").close();
+  showSupport(true).catch(e => toast(e.message, true));
+});
+
 // ---------------------------------------------------------------- start
 initLanguage().then(() => {
+  showSupport().catch(() => { /* the support window is optional */ });
   showTab(store.get("tab", "dash"));
   pollState();
   setInterval(pollState, 3000);

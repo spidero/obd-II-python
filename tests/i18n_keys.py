@@ -63,7 +63,11 @@ class _Collector(HTMLParser):
 def html_keys() -> set[str]:
     c = _Collector()
     c.feed((STATIC / "index.html").read_text(encoding="utf-8"))
-    return {k for k in c.keys if re.search(r"[A-Za-z]{2}", k)}
+    return {k for k in c.keys if re.search(r"[A-Za-z]{2}", k) and k not in HTML_IGNORE}
+
+
+# texts of index.html that stay the same in every language
+HTML_IGNORE = {"OBDT1-…"}  # placeholder showing the supporter key format
 
 
 _JS_STRING = re.compile(r'"((?:[^"\\\n]|\\.)*)"')
