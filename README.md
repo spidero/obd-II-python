@@ -266,7 +266,7 @@ A star on GitHub, a bug report or telling a friend help too.
 
 ## License
 
-OBD Tool's own code is released under the MIT license (see `pyproject.toml`).
+OBD Tool's own code is released under the [MIT license](LICENSE), copyright (c) 2026 Piotr Skwarna.
 
 It depends on [python-OBD](https://github.com/brendan-w/python-OBD), which is licensed under
 **GPL-2.0-only**. Installing OBD Tool with `pip`/`pipx` keeps the two separate, but a bundled
