@@ -776,6 +776,7 @@ function renderHealth(r) {
     `health-report-${r.created.replace(/:/g, "-")}.json`));
   const actions = el("div", { class: "actions" },
     el("a", { class: "btn", href: `/api/health/report.html?lang=${i18n.lang}`, target: "_blank", rel: "noopener", text: "Printable report" }),
+    el("a", { class: "btn", href: `/api/health/report.html?print=1&lang=${i18n.lang}`, target: "_blank", rel: "noopener", text: "Save PDF" }),
     el("a", { class: "btn", href: `/api/health/report.html?download=1&lang=${i18n.lang}`, text: "Download HTML" }),
     jsonBtn);
   box.append(el("div", { class: "card health-summary" }, ring, meta, el("span", { class: "spacer" }), actions));

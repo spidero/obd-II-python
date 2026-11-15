@@ -122,6 +122,7 @@ def test_crossings_hysteresis():
 def test_html_report():
     html = render_html(evaluate(snapshot(stored=["P0420"], mil=True)))
     assert "<title>Vehicle health report</title>" in html and "P0420" in html and "Poor" in html
+    assert "window.print()" in html and "Save PDF" in html and "@media print" in html
 
 
 # ---------------------------------------------------------------- end to end on the simulator

@@ -96,8 +96,17 @@ def render_html(report: HealthReport, lang: str = "en") -> str:
   .val {{ font-family: ui-monospace, Menlo, Consolas, monospace; white-space: nowrap; }}
   .note {{ color: #5d6673; font-size: 12px; margin-top: 20px; }}
   @media (max-width: 600px) {{ .val {{ white-space: normal; }} }}
+  .toolbar {{ display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }}
+  .toolbar button {{ font: inherit; font-weight: 600; padding: 7px 14px; border-radius: 8px; cursor: pointer;
+                    border: 1px solid #c9831a; background: #e5a02a; color: #15191e; }}
+  .toolbar span {{ color: #5d6673; font-size: 12px; }}
+  @page {{ margin: 14mm; }}
+  @media print {{ .toolbar {{ display: none; }} body {{ padding: 0; max-width: none; }} tr {{ break-inside: avoid; }} .val {{ white-space: normal; overflow-wrap: anywhere; }} }}
 </style></head>
 <body>
+<div class="toolbar"><button type="button" onclick="window.print()">{escape(_("Save PDF"))}</button>
+  <span>{escape(_("In the print window choose “Save as PDF” as the printer."))}</span></div>
+<script>if (new URLSearchParams(location.search).has("print")) addEventListener("load", () => setTimeout(print, 300));</script>
 <h1>{escape(_("Vehicle health report"))}</h1>
 <div class="muted">{escape(summary)}</div>
 <div class="head">

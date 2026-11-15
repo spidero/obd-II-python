@@ -153,7 +153,8 @@ higher rate) and applies rules of thumb for petrol engines:
 Each finding is OK / info / warning / critical, or "not evaluated" when a precondition
 (engine running, engine warm, car standing) is not met. The score starts at 100 and loses
 points per finding; any critical finding caps it at 59 (Poor), any warning at 84 (Fair).
-The report can be downloaded as HTML (printable) or JSON. It is an indicative check,
+The report can be saved as **PDF** (*Save PDF* opens the print window – choose “Save as PDF”),
+downloaded as HTML or JSON. It is an indicative check,
 not a replacement for a workshop diagnosis.
 
 Try it without a car using simulator faults:
@@ -299,11 +300,13 @@ tests/                pytest, all against the simulator
 
 ## Support
 
-OBD Tool is free, open source and has no ads. It is made by Piotr Skwarna in his spare time.
+OBD Tool is free, open source and has no ads.
 If it saved you a trip to the workshop, please support its development:
 
 - [GitHub Sponsors](https://github.com/sponsors/spidero)
 - [PayPal](https://paypal.me/spidero)
+
+<img src="docs/screenshots/sim-support.png" alt="Support window" width="480">
 
 **Supporter key.** The web UI and the desktop app show a *Support OBD Tool* window at every start.
 Supporters receive a personal key that hides it and shows *Licensed to: your name* in *About*.
