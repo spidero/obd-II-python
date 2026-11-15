@@ -266,10 +266,17 @@ A star on GitHub, a bug report or telling a friend help too.
 
 ## License
 
-OBD Tool's own code is released under the [MIT license](LICENSE), copyright (c) 2026 Piotr Skwarna.
+Copyright (C) 2026 Piotr Skwarna
 
-It depends on [python-OBD](https://github.com/brendan-w/python-OBD), which is licensed under
-**GPL-2.0-only**. Installing OBD Tool with `pip`/`pipx` keeps the two separate, but a bundled
-build that includes python-OBD (for example a standalone Windows `.exe`) is a combined work and is
-distributed under the terms of the GPL-2.0, with the full source code available in this repository.
+OBD Tool is free software: you can redistribute it and/or modify it under the terms of the
+GNU General Public License as published by the Free Software Foundation, either
+[version 2 of the License](LICENSE), or (at your option) any later version
+(SPDX: `GPL-2.0-or-later`).
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See the GNU General Public License for more details.
+
+OBD Tool uses [python-OBD](https://github.com/brendan-w/python-OBD) (GPL-2.0-only); bundled builds
+that include it, such as a standalone Windows `.exe`, are therefore distributed under GPL version 2.
 The other dependencies (pyserial, Typer, Rich, FastAPI, Uvicorn, pywebview) use MIT or BSD licenses.
