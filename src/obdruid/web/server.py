@@ -193,6 +193,13 @@ def create_app(settings: Optional[ConnectionSettings] = None, connect: bool = Tr
     def get_ports():
         return {"ports": find_ports()}
 
+    @app.post("/api/bluetooth/scan")
+    async def bluetooth_scan(seconds: int = 8):
+        from ..core import transports
+
+        devices = await asyncio.to_thread(transports.scan_bluetooth, min(20, max(3, seconds)))
+        return {"devices": [d.to_dict() for d in devices]}
+
     @app.post("/api/connect")
     def post_connect(req: ConnectRequest):
         new = replace(state.settings, port=req.port or None, baudrate=req.baudrate,

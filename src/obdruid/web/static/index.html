@@ -220,6 +220,13 @@
             <input list="ports" id="in-port" placeholder="auto detect" autocomplete="off">
             <datalist id="ports"></datalist>
           </label>
+          <p class="muted hint" data-i18n-html>USB/serial port, <code>rfcomm://MAC</code> (Bluetooth), <code>ble://MAC</code>
+            (Bluetooth LE) or <code>socket://192.168.0.10:35000</code> (Wi-Fi).</p>
+          <div class="bt-scan">
+            <button class="btn" type="button" id="btn-bt-scan">Find Bluetooth adapters</button>
+            <span class="muted" id="bt-scan-msg"></span>
+          </div>
+          <div class="bt-list" id="bt-list"></div>
           <div class="row">
             <label class="field">Baud rate
               <select id="in-baud">

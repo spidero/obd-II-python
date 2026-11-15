@@ -413,3 +413,12 @@ dialog::backdrop { background: rgb(0 0 0 / .55); }
 
 .about-head { display: flex; align-items: center; gap: .75rem; }
 .about-head img { flex: none; }
+
+/* ---------- Bluetooth adapter search ---------- */
+.hint { font-size: .85rem; margin: -.25rem 0 .5rem; }
+.hint code { font-size: .8rem; }
+.bt-scan { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; margin-bottom: .5rem; }
+.bt-list { display: flex; flex-direction: column; gap: .35rem; margin-bottom: .75rem; }
+.bt-item { text-align: left; padding: .5rem .7rem; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--surface-2); color: var(--text); cursor: pointer; font: inherit; }
+.bt-item:hover { border-color: var(--accent); }

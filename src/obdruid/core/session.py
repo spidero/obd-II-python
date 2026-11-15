@@ -15,7 +15,7 @@ import obd
 from obd import OBDStatus
 
 from . import dtc as dtc_codes
-from . import diag
+from . import diag, transports
 from .models import (AdapterInfo, Dtc, DtcReport, FreezeFrame, MonitorReport, Param, Reading, ReadinessTest,
                      VehicleStatus)
 from .pids import NOT_LIVE, READINESS_LABELS, param_for, unit_name
@@ -102,9 +102,14 @@ class ObdSession:
                 if not ports:
                     raise ObdError("No OBD adapter found (no serial ports)")
                 port = ports[0]
+            baudrate, timeout = s.baudrate, s.timeout
+            if transports.is_url(port):
+                transports.register()
+                baudrate = baudrate or 38400       # no baud rate detection over a wireless link
+                timeout = max(timeout, 2.0)        # Bluetooth/Wi-Fi adds latency
             log.info("Connecting to %s", port)
-            conn = obd.OBD(portstr=port, baudrate=s.baudrate, protocol=s.protocol,
-                           fast=s.fast, timeout=s.timeout)
+            conn = obd.OBD(portstr=port, baudrate=baudrate, protocol=s.protocol,
+                           fast=s.fast, timeout=timeout)
             status = conn.status()
             if status == OBDStatus.NOT_CONNECTED:
                 conn.close()
