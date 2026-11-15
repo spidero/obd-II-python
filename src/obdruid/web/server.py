@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import threading
+import time
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from pathlib import Path
@@ -42,13 +43,17 @@ class AppState:
         self.trip = TripComputer(fuel=self.storage.active().get("fuel", "petrol"))
         self.session = ObdSession(settings)
         self.reader = LiveReader(self.session, self.trip)
-        self.state = "disconnected"  # disconnected | connecting | connected | error
+        self.state = "disconnected"  # disconnected | connecting | connected | reconnecting | error
         self.error: Optional[str] = None
+        self.auto_reconnect = False     # True after a connect request, False after "Disconnect"
+        self.attempt = 0                # reconnect attempts since the link was lost
+        self._next_try = 0.0
         self._lock = threading.Lock()
         self.last_report: Optional[HealthReport] = None
         self.health_running = False
 
     def connect(self, settings: Optional[ConnectionSettings] = None) -> None:
+        self.auto_reconnect = True
         with self._lock:
             if settings is not None:
                 self.settings = settings
@@ -85,8 +90,38 @@ class AppState:
         return self.storage.active()
 
     def disconnect(self) -> None:
+        self.auto_reconnect = False
         self.session.close()
         self.state, self.error = "disconnected", None
+
+    RETRY_DELAYS = (5, 5, 5, 15, 15, 30)  # seconds before attempt 1, 2, ...; then every 30 s
+
+    def watchdog_step(self, now: Optional[float] = None) -> None:
+        """Notice a lost link and reconnect with back-off (called every few seconds by a thread)."""
+        now = time.monotonic() if now is None else now
+        if self.state == "connected" and not self.session.connected:
+            self.state, self.error = "error", self.session.last_error or "Connection to the adapter was lost"
+        if not self.auto_reconnect or self.health_running or self.state not in ("error", "reconnecting"):
+            if self.state == "connected":
+                self.attempt = 0
+            return
+        if self.attempt == 0 and self.state == "error":  # first notice: schedule attempt 1
+            self.state = "reconnecting"
+            self._next_try = now + self.RETRY_DELAYS[0]
+            self.attempt = 1
+            return
+        if now < self._next_try:
+            return
+        reason = self.error
+        try:
+            self.connect()
+            self.attempt = 0
+            log.info("Reconnected to the adapter")
+        except Exception:
+            delay = self.RETRY_DELAYS[min(self.attempt, len(self.RETRY_DELAYS) - 1)]
+            self.attempt += 1
+            self.state, self.error = "reconnecting", self.error or reason
+            self._next_try = time.monotonic() + delay
 
     def check(self) -> ObdSession:
         if self.state != "connected" or not self.session.connected:
@@ -101,6 +136,7 @@ class AppState:
             "state": self.state,
             "error": self.error,
             "settings": {"port": s.port, "baudrate": s.baudrate, "protocol": s.protocol, "simulate": s.simulate},
+            "attempt": self.attempt,
             "version": __version__,
             "vehicle": self.vehicle,
         }
@@ -171,7 +207,10 @@ def create_app(settings: Optional[ConnectionSettings] = None, connect: bool = Tr
         if connect:
             # connect in the background so the UI is available immediately
             threading.Thread(target=_safe_connect, args=(state,), daemon=True).start()
+        stop = threading.Event()
+        threading.Thread(target=_watchdog, args=(state, stop), name="obd-watchdog", daemon=True).start()
         yield
+        stop.set()
         state.disconnect()
 
     app = FastAPI(title="OBDruid", version=__version__, lifespan=lifespan)
@@ -509,6 +548,14 @@ class NoCacheStaticFiles(StaticFiles):
         response = super().file_response(*args, **kwargs)
         response.headers["Cache-Control"] = "no-cache"
         return response
+
+
+def _watchdog(state: AppState, stop: threading.Event, every: float = 2.0) -> None:
+    while not stop.wait(every):
+        try:
+            state.watchdog_step()
+        except Exception as e:  # never let the watchdog die
+            log.warning("Watchdog: %s", e)
 
 
 def _safe_connect(state: AppState) -> None:

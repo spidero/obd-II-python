@@ -171,14 +171,16 @@ function showTab(name) {
 $$(".tabs button").forEach(b => b.addEventListener("click", () => showTab(b.dataset.tab)));
 
 // ---------------------------------------------------------------- connection state
-const STATE_TEXT = { connected: "Connected", connecting: "Connecting…", disconnected: "Disconnected", error: "Connection error" };
+const STATE_TEXT = { connected: "Connected", connecting: "Connecting…", disconnected: "Disconnected", error: "Connection error",
+  reconnecting: "Reconnecting…" };
 
 function applyState(s) {
   const prev = ui.state;
   ui.state = s.state;
   const pill = $("#conn-pill");
   pill.dataset.state = s.state;
-  $("#conn-text").textContent = t(STATE_TEXT[s.state]) + (s.settings && s.settings.simulate && s.state === "connected" ? " " + t("(simulator)") : "");
+  $("#conn-text").textContent = t(STATE_TEXT[s.state]) + (s.settings && s.settings.simulate && s.state === "connected" ? " " + t("(simulator)") : "")
+    + (s.state === "reconnecting" && s.attempt > 1 ? " " + t("(attempt {n})", { n: s.attempt }) : "");
   pill.title = t(s.error || "");
   const err = $("#conn-error");
   err.hidden = !s.error;

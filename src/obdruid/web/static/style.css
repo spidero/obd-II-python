@@ -83,7 +83,7 @@ button, input, select { font: inherit; color: inherit; }
 }
 .conn-pill .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
 .conn-pill[data-state="connected"] .dot { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 25%, transparent); }
-.conn-pill[data-state="connecting"] .dot { background: var(--warn); animation: pulse 1s infinite; }
+.conn-pill[data-state="connecting"] .dot, .conn-pill[data-state="reconnecting"] .dot { background: var(--warn); animation: pulse 1s infinite; }
 .conn-pill[data-state="error"] .dot { background: var(--danger); }
 @keyframes pulse { 50% { opacity: .3; } }
 
