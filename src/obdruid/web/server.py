@@ -26,6 +26,7 @@ from ..core.pids import DEFAULT_TILES
 from ..core.report_html import render_html
 from ..core import supporter
 from ..core.storage import FUELS, Storage, StorageError
+from ..core.vin import decode as vin_decode
 from ..core.trip import LiveReader, TripComputer
 
 log = logging.getLogger(__name__)
@@ -268,6 +269,7 @@ def create_app(settings: Optional[ConnectionSettings] = None, connect: bool = Tr
             return {
                 "adapter": s.adapter_info().to_dict(),
                 "vin": s.vin(),
+                "vin_info": (lambda info: info.to_dict() if info else None)(vin_decode(s.vin())),
                 "status": s.status().to_dict(),
             }
         return guarded(work)

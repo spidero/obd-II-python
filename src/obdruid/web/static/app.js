@@ -1265,6 +1265,9 @@ async function loadInfo() {
     ]);
     fillDl($("#info-vehicle"), [
       ["VIN", info.vin || "not reported by the car"],
+      ...(info.vin_info && info.vin_info.manufacturer ? [["Manufacturer", info.vin_info.manufacturer]] : []),
+      ...(info.vin_info && info.vin_info.country ? [["Made in", info.vin_info.country]] : []),
+      ...(info.vin_info && info.vin_info.year ? [["Model year (from VIN)", String(info.vin_info.year)]] : []),
       ["Ignition", s.ignition_type],
       ["MIL (check engine)", s.mil ? "ON" : "off"],
       ["Stored codes", String(s.dtc_count)],

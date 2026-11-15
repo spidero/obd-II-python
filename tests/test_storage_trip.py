@@ -65,7 +65,7 @@ def test_vehicle_profiles(tmp_path):
     assert st.select_for_vin(None)["id"] == car["id"]                    # no VIN: keep the active profile
     assert st.select_for_vin("WVWZZZ1KZAW000001")["id"] == car["id"]     # first VIN is adopted
     other = st.select_for_vin("VF1AAAAAA00000002")
-    assert other["id"] != car["id"] and other["name"] == "Car 000002"
+    assert other["id"] != car["id"] and other["name"] == "Renault"
     assert st.select_for_vin("WVWZZZ1KZAW000001")["id"] == car["id"]     # known VIN: switch back
     assert st.update(car["id"], fuel="diesel", name="  Golf ")["name"] == "Golf"
     assert st.update(car["id"], fuel="coal")["fuel"] == "petrol"

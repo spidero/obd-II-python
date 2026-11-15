@@ -190,7 +190,10 @@ class Storage:
                     return self.activate(v["id"])
             if not active.get("vin") and not self.records(active["id"]):
                 return self.update(active["id"], vin=vin)
-            return self.create(f"Car {vin[-6:]}", vin=vin)
+            from .vin import decode
+
+            info = decode(vin)
+            return self.create((info and info.label) or f"Car {vin[-6:]}", vin=vin)
 
     def _select_without_vin(self, real: list[dict], active: dict, port: Optional[str]) -> dict:
         no_vin = [v for v in real if not v.get("vin")]

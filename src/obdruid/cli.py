@@ -152,6 +152,13 @@ def info(ctx: typer.Context):
     t.add_row("Voltage", f"{adapter.voltage:.1f} V" if adapter.voltage is not None else "?")
     t.add_row("Protocol", f"{adapter.protocol} (#{adapter.protocol_id})")
     t.add_row("VIN", vin or "[dim]not reported by the car[/]")
+    from .core.vin import decode as vin_decode
+
+    decoded = vin_decode(vin)
+    if decoded and decoded.manufacturer:
+        t.add_row("Manufacturer", decoded.manufacturer + (f" ({decoded.country})" if decoded.country else ""))
+    if decoded and decoded.year:
+        t.add_row("Model year", f"{decoded.year} (from VIN)")
     t.add_row("Ignition", status.ignition_type)
     t.add_row("MIL (check engine)", "[bold red]ON[/]" if status.mil else "[green]off[/]")
     t.add_row("Stored codes", str(status.dtc_count))
