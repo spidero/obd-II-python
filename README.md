@@ -1,7 +1,7 @@
 # OBD Tool
 
-
 [![Tests](https://github.com/spidero/obd-II-python/actions/workflows/tests.yml/badge.svg)](https://github.com/spidero/obd-II-python/actions/workflows/tests.yml)
+
 _by Piotr Skwarna · GPL-2.0-or-later_
 
 A small OBD-II workshop tool in Python: live data, reading and clearing trouble codes,
