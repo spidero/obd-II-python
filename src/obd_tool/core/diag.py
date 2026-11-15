@@ -188,6 +188,10 @@ def rate(value: float, lo: float | None, hi: float | None) -> tuple[str, float |
         return "fail", 0.0
     if lo is None and hi is None:
         return "pass", None
+    if value == lo or value == hi:
+        # A value sitting exactly on a limit is a pass per SAE J1979. In practice ECUs report their own
+        # threshold as the value (e.g. a test that has not run since start-up), so headroom means nothing.
+        return "pass", None
     if lo is not None and hi is not None:
         span = hi - lo
         if span <= 0:

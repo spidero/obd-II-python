@@ -14,6 +14,8 @@ from obd_tool.core.diag import monitor_name, parse_monitor, rate, read_freeze_fr
     (1.02, 0.4, 2.0, "pass", 38.7),     # window: distance to the nearest edge
     (1.92, 0.4, 2.0, "near", 5.0),
     (5, None, None, "pass", None),      # no limits (misfire counters)
+    (649.772, 649.772, 1274.534, "pass", None),  # value equals a limit: ECU echoes its threshold (real car, 02:81)
+    (150, None, 150, "pass", None),
 ])
 def test_rate(value, lo, hi, status, margin):
     assert rate(value, lo, hi) == (status, margin)
