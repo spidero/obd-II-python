@@ -230,7 +230,7 @@
   "fuel use not available for this car": "zużycie paliwa niedostępne dla tego auta",
   "not reported by the car": "auto nie podaje",
   "{n} % headroom": "zapas {n} %",
-  "{n} reads/s": "{n} odczytów/s",
+  "{n} refresh/s · {p} PID/s": "{n} odśw./s · {p} PID/s",
   "{n} samples": "próbek: {n}",
   "{n} supported": "obsługiwanych: {n}",
   "■ Stop ({n})": "■ Stop ({n})",

@@ -433,7 +433,10 @@ function updateTiles(readings) {
   const now = performance.now();
   ui.frames.push(now);
   ui.frames = ui.frames.filter(t => now - t < 5000);
-  $("#rate").textContent = ui.frames.length > 1 ? t("{n} reads/s", { n: (ui.frames.length / 5).toFixed(1) }) : "";
+  // Rate over the real time span of the window (it is shorter than 5 s right after start or a pause).
+  const span = (now - ui.frames[0]) / 1000;
+  const fps = ui.frames.length > 2 && span > 0 ? (ui.frames.length - 1) / span : 0;
+  $("#rate").textContent = fps ? t("{n} refresh/s · {p} PID/s", { n: fps.toFixed(1), p: Math.round(fps * readings.length) }) : "";
 
   let alarm = false;
   for (const r of readings) {
@@ -561,6 +564,7 @@ function closeLive() {
 }
 
 function sendLiveConfig() {
+  ui.frames = [];  // start the rate window again: a pause or a new interval would skew it
   if (ui.ws && ui.ws.readyState === WebSocket.OPEN) {
     ui.ws.send(JSON.stringify({ keys: ui.paused ? [] : ui.keys, interval: ui.interval }));
   }
