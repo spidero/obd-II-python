@@ -14,7 +14,7 @@ from rich.console import Console
 from rich.live import Live
 from rich.table import Table
 
-from . import __version__
+from . import __version__, about
 from .core import DEFAULT_DASHBOARD, ConnectionSettings, ObdError, ObdSession, find_ports
 from .core.simulator import FAULTS
 
@@ -69,7 +69,7 @@ def _select_vehicle(session: ObdSession):
 
 def _version(value: bool):
     if value:
-        console.print(f"obd-tool {__version__}")
+        console.print(f"obd-tool {__version__}\n{about.COPYRIGHT}, license {about.LICENSE}")
         raise typer.Exit()
 
 

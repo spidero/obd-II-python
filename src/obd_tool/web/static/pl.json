@@ -147,6 +147,8 @@
   "OK": "OK",
   "Not evaluated": "Nie oceniono",
   "Data folder": "Katalog danych",
+  "Author": "Autor",
+  "License": "Licencja",
   "Delete the profile “{name}” with its dashboard layout and all history records?": "Usunąć profil „{name}” razem z układem pulpitu i całą historią?",
   "Delete this record?": "Usunąć ten zapis?",
   "Detected once, not confirmed yet.": "Wykryte raz, jeszcze niepotwierdzone.",

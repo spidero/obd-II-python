@@ -1,5 +1,7 @@
 # OBD Tool
 
+_by Piotr Skwarna · GPL-2.0-or-later_
+
 A small OBD-II workshop tool in Python: live data, reading and clearing trouble codes,
 freeze frame, on-board monitor tests (mode 06), readiness monitors, fuel consumption and a
 **vehicle health check** with a 0–100 score. One core, three front ends:

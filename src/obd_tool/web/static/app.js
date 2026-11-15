@@ -1113,7 +1113,8 @@ $("#btn-about").addEventListener("click", async () => {
       ? "OBD Tool is free and open source. If it saved you a trip to the workshop, you can support its development:"
       : "OBD Tool is free and open source. A star on GitHub, a bug report or telling a friend all help.");
     const dl = $("#about-links");
-    dl.replaceChildren();
+    dl.replaceChildren(el("dt", { text: "Author" }), el("dd", { text: a.author }),
+                       el("dt", { text: "License" }), el("dd", { text: a.license }));
     for (const [k, url] of [["Source code", a.repo], ["Report a problem", a.issues]]) {
       dl.append(el("dt", { text: k }), el("dd", {}, el("a", { href: url, target: "_blank", rel: "noopener", text: url })));
     }

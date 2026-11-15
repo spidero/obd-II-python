@@ -109,6 +109,7 @@ def test_dashboard_trip_and_vehicles(client):
 
     about = client.get("/api/about").json()
     assert about["adapters"][0]["status"] == "tested" and about["repo"].startswith("https://")
+    assert about["author"] == "Piotr Skwarna" and about["license"] == "GPL-2.0-or-later"
     assert {l["name"] for l in about["support"]} == {"GitHub Sponsors", "PayPal"}
     assert all(l["url"].startswith("https://") for l in about["support"])
     assert client.post("/api/disconnect").json()["state"] == "disconnected"

@@ -351,7 +351,7 @@ def create_app(settings: Optional[ConnectionSettings] = None, connect: bool = Tr
 
     @app.get("/api/about")
     def get_about():
-        return {"version": __version__, "repo": about.REPO_URL, "issues": about.ISSUES_URL,
+        return {"version": __version__, "author": about.AUTHOR, "license": about.LICENSE, "repo": about.REPO_URL, "issues": about.ISSUES_URL,
                 "support": about.SUPPORT_LINKS, "adapters": about.ADAPTERS, "vehicles": about.VEHICLES_NOTE,
                 "data_dir": str(state.storage.root)}
 

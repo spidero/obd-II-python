@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+AUTHOR = "Piotr Skwarna"
+LICENSE = "GPL-2.0-or-later"
+COPYRIGHT = f"Copyright (C) 2026 {AUTHOR}"
+
 REPO_URL = "https://github.com/spidero/obd-II-python"
 ISSUES_URL = REPO_URL + "/issues"
 
