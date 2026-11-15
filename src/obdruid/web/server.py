@@ -10,6 +10,7 @@ import threading
 import time
 from contextlib import asynccontextmanager
 from dataclasses import replace
+from functools import lru_cache
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -233,6 +234,11 @@ def create_app(settings: Optional[ConnectionSettings] = None, connect: bool = Tr
     @app.get("/api/ports")
     def get_ports():
         return {"ports": find_ports()}
+
+    @app.get("/api/i18n/dtc")
+    def get_dtc_translations(lang: str = "en"):
+        """Trouble code descriptions in another language: {english: translated} for the browser's dictionary."""
+        return {"descriptions": _dtc_translations(lang)}
 
     @app.post("/api/bluetooth/scan")
     async def bluetooth_scan(seconds: int = 8):
@@ -620,6 +626,21 @@ class NoCacheStaticFiles(StaticFiles):
         response = super().file_response(*args, **kwargs)
         response.headers["Cache-Control"] = "no-cache"
         return response
+
+
+@lru_cache(maxsize=4)
+def _dtc_translations(lang: str) -> dict:
+    from obd.codes import DTC
+
+    from ..core import dtc_i18n
+    from ..core.dtc import clean_description
+
+    out = {}
+    for text in {clean_description(v) for v in DTC.values()}:
+        local = dtc_i18n.translate(text, lang)
+        if local != text:
+            out[text] = local
+    return out
 
 
 def _watchdog(state: AppState, stop: threading.Event, every: float = 2.0) -> None:

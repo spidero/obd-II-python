@@ -97,6 +97,10 @@ async function initLanguage() {
       i18n.words = { map: data.words, re: new RegExp(`(?<![\\w])(${esc.join("|")})(?![\\w])`, "g") };
     }
     translateStatic();
+    // trouble code descriptions come from the server (built from a parts dictionary); optional
+    api(`/api/i18n/dtc?lang=${i18n.lang}`).then(d => {
+      for (const [k, v] of Object.entries(d.descriptions || {})) if (!(k in i18n.strings)) i18n.strings[k] = v;
+    }).catch(() => {});
   } catch { i18n.lang = "en"; btn.textContent = "EN"; }
 }
 
@@ -702,7 +706,7 @@ function freezeFrameCard(ff) {
   }
   card.append(el("h3", { text: `${t("Freeze frame")} · ${ff.dtc.code}` }),
     el("p", { class: "muted", text: t("Engine conditions when the ECU detected {code}", { code: ff.dtc.code })
-      + (ff.dtc.description ? ` (${ff.dtc.description})` : "") + "." }));
+      + (ff.dtc.description ? ` (${t(ff.dtc.description)})` : "") + "." }));
   const grid = el("div", { class: "ff-grid" });
   for (const r of ff.readings) {
     grid.append(el("div", { class: "ff-item" }, el("span", { text: r.label }),

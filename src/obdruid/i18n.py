@@ -15,6 +15,8 @@ import re
 from functools import lru_cache
 from pathlib import Path
 
+from .core import dtc_i18n
+
 STATIC_DIR = Path(__file__).parent / "web" / "static"
 LANGUAGES = ("en", "pl")
 
@@ -46,6 +48,8 @@ def tr(text, lang: str = "en", **params) -> str:
             if match:
                 out = re.sub(r"\$(\d)", lambda m: tr(match.group(int(m.group(1))), lang), to)
                 break
+        else:
+            out = dtc_i18n.translate(text, normalize(lang))  # trouble code descriptions; others stay as they are
     if params:
         out = re.sub(r"\{(\w+)\}", lambda m: str(params.get(m.group(1), m.group(0))), out)
     return out

@@ -42,7 +42,7 @@ obd-tool = "obdruid.cli:app"  # old command name, kept for existing installs
 where = ["src"]
 
 [tool.setuptools.package-data]
-obdruid = ["web/static/*"]
+obdruid = ["web/static/*", "core/dtc_*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

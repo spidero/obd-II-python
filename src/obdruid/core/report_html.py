@@ -57,7 +57,7 @@ def render_html(report: HealthReport, lang: str = "en") -> str:
             f"<tr><td>{escape(_(str(r['label'])))}</td><td class=\"val\">{escape(_(_num(r['value'])))} "
             f"{escape(str(r['unit']))}</td></tr>" for r in ff["readings"])
         extra += (f"<h2>{escape(_('Freeze frame — {code}', code=ff['dtc']['code']))}</h2>"
-                  f"<p class=\"detail\">{escape(ff['dtc']['description'] or '')} · "
+                  f"<p class=\"detail\">{escape(_(ff['dtc']['description'] or ''))} · "
                   f"{escape(_('engine conditions when the fault was detected.'))}</p>"
                   f"<table><tbody>{ff_rows}</tbody></table>")
     if report.monitor_tests:
