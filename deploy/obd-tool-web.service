@@ -1,19 +1,22 @@
 # systemd unit: obd-tool web UI reachable from the network.
-# Install: sudo cp deploy/obd-tool-web.service /etc/systemd/system/ && sudo systemctl enable --now obd-tool-web
-# Adjust User, WorkingDirectory and OBD_PORT to your setup.
+# Example for a user "pi" with the repo cloned to /home/pi/obd-II-python and a venv in .venv.
+# Adjust User, WorkingDirectory, ExecStart and OBD_PORT to your setup, then:
+#   sudo cp deploy/obd-tool-web.service /etc/systemd/system/ && sudo systemctl enable --now obd-tool-web
 [Unit]
 Description=OBD Tool web UI
 After=network-online.target
 Wants=network-online.target
 
 [Service]
-User=spider
+User=pi
 Group=dialout
-WorkingDirectory=/home/spider/obd-II-python
-Environment=OBD_PORT=/dev/serial/by-id/usb-www.vgatemall.com_vLinker_FS_D3B7L7BX-if00-port0
+WorkingDirectory=/home/pi/obd-II-python
+# A stable adapter path from /dev/serial/by-id/ (list them with: obd-tool ports).
+# Without OBD_PORT the adapter is detected automatically.
+#Environment=OBD_PORT=/dev/serial/by-id/usb-<your-adapter>-if00-port0
 Environment=OBD_WEB_HOST=0.0.0.0
 Environment=OBD_WEB_PORT=8090
-ExecStart=/home/spider/obd-II-python/.venv/bin/obd-tool web
+ExecStart=/home/pi/obd-II-python/.venv/bin/obd-tool web
 Restart=on-failure
 RestartSec=5
 

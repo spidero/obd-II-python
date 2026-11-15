@@ -205,7 +205,9 @@ network.
 
 ### Run as a service (Raspberry/Orange Pi)
 
-`deploy/obd-tool-web.service` starts the web UI on boot, listening on all interfaces:
+`deploy/obd-tool-web.service` starts the web UI on boot, listening on all interfaces. It is an
+example for the user `pi` with the repo in `/home/pi/obd-II-python` – edit `User`, the paths and
+optionally `OBD_PORT` first:
 
 ```bash
 sudo cp deploy/obd-tool-web.service /etc/systemd/system/
