@@ -123,6 +123,15 @@ Any ELM327 compatible adapter (USB, Bluetooth via `rfcomm`) should work through
 
 ## Install
 
+From a release (no git needed) – download the wheel from the
+[latest release](https://github.com/spidero/obdruid/releases/latest) and install it with pipx:
+
+```bash
+pipx install --system-site-packages "obdruid-0.5.0-py3-none-any.whl[gui]"   # or [web] without the window
+```
+
+From source:
+
 ```bash
 git clone https://github.com/spidero/obdruid.git
 cd obdruid
@@ -272,8 +281,12 @@ English and Polish; the choice is remembered in the browser, and a Polish browse
 English texts are the keys of one dictionary, `src/obdruid/web/static/pl.json`, used by both the
 browser and the server (`obdruid/i18n.py`). Health findings are stored as templates with parameters,
 so saved reports follow the current language. To add a language, copy `pl.json`, translate it and add
-its code to `LANGUAGES` in `i18n.py` and to the button in `app.js`. Not translated: the command line,
-the trouble code descriptions (they come from python-OBD's English database) and the API messages.
+its code to `LANGUAGES` in `i18n.py` and to the button in `app.js`.
+
+**Trouble code descriptions** are translated too: all ~1800 generic descriptions are built from a parts
+dictionary (`src/obdruid/core/dtc_pl.json`: component names, fault kinds, prefixes), for example
+*Fuel Rail Pressure Sensor Circuit Low* → *Czujnik ciśnienia paliwa w listwie – obwód: sygnał niski*.
+Not translated: the command line and the API messages.
 
 ### Clearing trouble codes
 
@@ -326,6 +339,12 @@ The web UI is an installable app (PWA): open it on the phone and use the browser
   ```
 
   With a self-signed certificate the browser shows a warning once; accept it for your own device.
+
+### Connection lost?
+
+The server reconnects by itself: after a lost link (ignition off, Bluetooth out of range) it retries
+after 5 s, then every 15 s and 30 s until the car answers again or you press *Disconnect*. The top bar
+shows *Reconnecting…*. A server started before the ignition was on connects once the car wakes up.
 
 ### Run as a service (Raspberry/Orange Pi)
 

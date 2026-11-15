@@ -112,6 +112,6 @@ def decode(vin: Optional[str], today: Optional[date] = None) -> Optional[VinInfo
                    manufacturer=WMI.get(wmi) or WMI.get(wmi[:2]))
     # Ford of Europe keeps the year in position 11 (and the month in 12); others use position 10.
     position = 10 if wmi in ("WF0", "VS6", "NM0", "SFA") else 9
-    if len(text) > position:
+    if len(text) > position and (info.manufacturer or info.country):  # no year guess for an unknown WMI
         info.year = _year(text[position], today)
     return info
