@@ -84,6 +84,8 @@ Wireless adapters are used through a port address instead of a serial device:
 | Bluetooth LE | `ble://AA:BB:CC:DD:EE:FF` | Linux. Works with dual-mode adapters too; add `?type=random` for random addresses. |
 | Wi-Fi | `socket://192.168.0.10:35000` | Join the adapter's Wi-Fi network first. |
 
+![Petrol car over Bluetooth, picked with the car switcher](docs/screenshots/car-bluetooth-dashboard.png)
+
 Find the address with a scan – in the web UI (*Connection → Find Bluetooth adapters*, then click the
 adapter) or in a terminal:
 
@@ -92,6 +94,10 @@ obdruid ports --scan                               # serial ports + nearby Bluet
 obdruid -p ble://81:23:45:67:89:BA info            # use the address as the port
 obdruid -p rfcomm://01:23:45:67:89:BA live
 ```
+
+Several cars? Each vehicle profile remembers its adapter: pick the car in the switcher at the top
+and OBDruid connects to it (e.g. a diesel on USB and a petrol car on Bluetooth). A car that does not
+report its VIN is recognised by the adapter it was last connected through.
 
 Tips:
 

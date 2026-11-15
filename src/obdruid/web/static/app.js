@@ -316,7 +316,10 @@ function buildGauge(key, cfg) {
 function buildTiles() {
   const grid = $("#tiles");
   grid.replaceChildren();
-  const old = ui.series;
+  // keep the charts and min/max when tiles are rearranged, but never carry them over to another car
+  const carId = ui.vehicle ? ui.vehicle.id : null;
+  const old = ui.seriesCar === carId ? ui.series : {};
+  ui.seriesCar = carId;
   ui.series = {};
   for (const key of ui.keys) {
     const p = paramOf(key);
@@ -469,6 +472,8 @@ function updateTiles(readings) {
       } else {
         drawSpark($("canvas", tile), s.values);
       }
+    } else if (r.value === null && s.values.length) {
+      // missed reading (common over Bluetooth): keep the last value, dimmed by the "stale" class
     } else {
       valueBox.classList.toggle("text", r.value !== null);
       num.textContent = fmt(r.value);
