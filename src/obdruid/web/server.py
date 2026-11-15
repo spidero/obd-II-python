@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import mimetypes
 import threading
 import time
 from contextlib import asynccontextmanager
@@ -609,6 +610,9 @@ def create_app(settings: Optional[ConnectionSettings] = None, connect: bool = Tr
     return app
 
 
+mimetypes.add_type("application/manifest+json", ".webmanifest")
+
+
 class NoCacheStaticFiles(StaticFiles):
     """Static files the browser must revalidate (ETag), so an update never mixes new HTML with old CSS/JS."""
 
@@ -633,10 +637,12 @@ def _safe_connect(state: AppState) -> None:
         pass  # error is stored in state and shown in the UI
 
 
-def run(settings: ConnectionSettings, host: str = "127.0.0.1", port: int = 8090, connect: bool = True) -> None:
+def run(settings: ConnectionSettings, host: str = "127.0.0.1", port: int = 8090, connect: bool = True,
+        ssl_cert: Optional[str] = None, ssl_key: Optional[str] = None) -> None:
     import uvicorn
 
     app = create_app(settings, connect=connect)
     shown = "localhost" if host in ("127.0.0.1", "0.0.0.0") else host
-    print(f"OBDruid: http://{shown}:{port}/  (Ctrl+C to quit)")
-    uvicorn.run(app, host=host, port=port, log_level="warning")
+    scheme = "https" if ssl_cert else "http"
+    print(f"OBDruid: {scheme}://{shown}:{port}/  (Ctrl+C to quit)")
+    uvicorn.run(app, host=host, port=port, log_level="warning", ssl_certfile=ssl_cert, ssl_keyfile=ssl_key)

@@ -528,11 +528,20 @@ def web(
                              help="Listen address (0.0.0.0 = whole network)."),
     port: int = typer.Option(8090, "--web-port", envvar="OBD_WEB_PORT", help="Web server port."),
     no_connect: bool = typer.Option(False, "--no-connect", help="Do not connect to the adapter on start."),
+    ssl_cert: Optional[Path] = typer.Option(None, "--ssl-cert", envvar="OBD_WEB_SSL_CERT", exists=True,
+                                            help="TLS certificate (PEM) to serve HTTPS – needed to install "
+                                                 "the app on Android from another machine."),
+    ssl_key: Optional[Path] = typer.Option(None, "--ssl-key", envvar="OBD_WEB_SSL_KEY", exists=True,
+                                           help="Private key (PEM) for --ssl-cert."),
 ):
     """Start the web interface."""
     from .web.server import run
 
-    run(_settings(ctx), host=host, port=port, connect=not no_connect)
+    if bool(ssl_cert) != bool(ssl_key):
+        err.print("[red]--ssl-cert and --ssl-key must be given together.[/]")
+        raise typer.Exit(2)
+    run(_settings(ctx), host=host, port=port, connect=not no_connect,
+        ssl_cert=str(ssl_cert) if ssl_cert else None, ssl_key=str(ssl_key) if ssl_key else None)
 
 
 @app.command()

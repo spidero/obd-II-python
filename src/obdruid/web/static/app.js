@@ -1431,6 +1431,12 @@ $("#car-switch").addEventListener("change", async e => {
   }
 });
 
+// ---------------------------------------------------------------- installable app (PWA)
+// Service workers need a secure context (https or localhost); elsewhere the page simply works without one.
+if ("serviceWorker" in navigator && window.isSecureContext) {
+  navigator.serviceWorker.register("sw.js").catch(() => { /* optional */ });
+}
+
 // ---------------------------------------------------------------- start
 initLanguage().then(() => {
   showSupport().catch(() => { /* the support window is optional */ });

@@ -311,6 +311,22 @@ Before clearing, the codes and the freeze frame are saved to the vehicle history
 The web server has no authentication. Keep it on `127.0.0.1` (default) or a trusted
 network.
 
+### Install it on your phone
+
+The web UI is an installable app (PWA): open it on the phone and use the browser menu.
+
+- **iPhone/iPad (Safari):** *Share → Add to Home Screen*. Works over plain `http://`.
+- **Android (Chrome):** *⋮ → Add to Home screen* creates a shortcut. A full install (own window,
+  offline shell) needs HTTPS – start the server with a certificate:
+
+  ```bash
+  openssl req -x509 -newkey rsa:2048 -nodes -days 3650 -subj "/CN=obdruid" \
+    -keyout obdruid-key.pem -out obdruid-cert.pem
+  obdruid web --host 0.0.0.0 --ssl-cert obdruid-cert.pem --ssl-key obdruid-key.pem
+  ```
+
+  With a self-signed certificate the browser shows a warning once; accept it for your own device.
+
 ### Run as a service (Raspberry/Orange Pi)
 
 `deploy/obdruid-web.service` starts the web UI on boot, listening on all interfaces. It is an
