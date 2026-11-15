@@ -24,14 +24,15 @@ ADAPTERS = [
      "notes": "FTDI serial, ELM327 v2.3 compatible, 115200 baud. Reference adapter."},
     {"name": "Other USB ELM327 / STN adapters (OBDLink SX/EX, vLinker FD/MC USB)", "status": "should work",
      "notes": "Anything that shows up as a serial port and speaks the ELM327 command set."},
-    {"name": "Bluetooth Classic ELM327 (SPP)", "status": "should work",
-     "notes": "Pair it and bind a serial port first (Linux: rfcomm, Windows: COM port). Not tested yet."},
+    {"name": "Bluetooth ELM327 (classic and dual-mode, e.g. \"OBDII\")", "status": "tested",
+     "notes": "Port rfcomm://MAC – no pairing tool or rfcomm bind needed (Linux). Tested with an ELM327 v2.1 clone: "
+              "about 7 PID/s. Find it with: obdruid ports --scan."},
+    {"name": "Bluetooth LE ELM327 (e.g. \"OBDBLE\", vLinker MC+, iOS-style adapters)", "status": "tested",
+     "notes": "Port ble://MAC (Linux). Tested with a dual-mode ELM327 v2.1 clone: about 6 PID/s."},
     {"name": "Cheap ELM327 v1.5 / v2.1 clones", "status": "should work",
      "notes": "Often unreliable or slow; try the --slow option if the connection fails."},
-    {"name": "Wi-Fi ELM327 adapters", "status": "not supported",
-     "notes": "They use a TCP socket instead of a serial port."},
-    {"name": "Bluetooth LE adapters (iOS style)", "status": "not supported",
-     "notes": "No serial port; needs a dedicated BLE transport."},
+    {"name": "Wi-Fi ELM327 adapters", "status": "should work",
+     "notes": "Port socket://IP:PORT, usually socket://192.168.0.10:35000 after joining the adapter's Wi-Fi. Not tested yet."},
 ]
 
 VEHICLES_NOTE = ("Any car with a standard OBD-II / EOBD socket (petrol from about 2001, diesel from about 2004 "

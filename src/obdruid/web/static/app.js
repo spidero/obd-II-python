@@ -1269,6 +1269,38 @@ $("#btn-about-key").addEventListener("click", () => {
   showSupport(true).catch(e => toast(e.message, true));
 });
 
+// ---------------------------------------------------------------- Bluetooth adapter search
+$("#btn-bt-scan").addEventListener("click", async () => {
+  const btn = $("#btn-bt-scan"), msg = $("#bt-scan-msg"), list = $("#bt-list");
+  btn.disabled = true;
+  msg.textContent = t("Searching (about 10 s)…");
+  list.replaceChildren();
+  try {
+    const { devices } = await api("/api/bluetooth/scan?seconds=8", { method: "POST" });
+    const obdLike = devices.filter(d => d.likely_obd);
+    const shown = obdLike.length ? obdLike : devices;
+    msg.textContent = devices.length
+      ? t("{n} found – click one to use it", { n: shown.length })
+      : t("Nothing found. Is the adapter plugged in and the ignition on?");
+    for (const d of shown) {
+      const item = el("button", { class: "bt-item", type: "button" },
+        el("b", { text: d.name || "?" }), " ",
+        el("span", { class: "chip", text: d.kind === "ble" ? "BLE" : "Bluetooth" }), " ",
+        el("span", { class: "mono muted", text: d.address }));
+      item.addEventListener("click", () => {
+        $("#in-port").value = d.url;
+        $("#in-baud").value = "";
+        msg.textContent = t("Port set to {url} – press Connect.", { url: d.url });
+      });
+      list.append(item);
+    }
+  } catch (e) {
+    msg.textContent = t(e.message);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
 // ---------------------------------------------------------------- start
 initLanguage().then(() => {
   showSupport().catch(() => { /* the support window is optional */ });

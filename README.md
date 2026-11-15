@@ -49,7 +49,8 @@ A built-in **ELM327 simulator** (`--sim`) lets you run everything without a car.
    ```
 3. **Connect a car:** plug an ELM327 adapter into the OBD-II socket (under the dashboard) and into
    USB, turn the ignition on (or start the engine) and run `.venv/bin/obdruid gui`. The adapter is
-   found automatically; `obdruid ports` lists the serial ports if it is not.
+   found automatically; `obdruid ports` lists the serial ports if it is not. Bluetooth or Wi-Fi adapter?
+   See [Bluetooth and Wi-Fi adapters](#bluetooth-and-wi-fi-adapters).
 4. **First checks:** the *Trouble codes* tab shows stored and pending codes with descriptions,
    *Health check* (engine warm and idling) gives a 0–100 score with explanations.
 
@@ -64,14 +65,42 @@ At start the app shows a short *Support OBDruid* window – see [Support](#suppo
 |---|---|---|
 | Vgate vLinker FS (USB) | **tested** | FTDI serial, ELM327 v2.3 compatible, 115200 baud. Reference adapter. |
 | Other USB ELM327 / STN adapters (OBDLink SX/EX, vLinker FD/MC USB) | should work | Anything that shows up as a serial port and speaks the ELM327 command set. |
-| Bluetooth Classic ELM327 (SPP) | should work | Pair it and bind a serial port first (Linux: `rfcomm`, Windows: COM port). Not tested yet. |
+| Bluetooth ELM327, classic and dual-mode (e.g. "OBDII") | **tested** | Port `rfcomm://MAC` (Linux) – no pairing tool or `rfcomm bind` needed. ELM327 v2.1 clone: about 7 PID/s. |
+| Bluetooth LE ELM327 (e.g. "OBDBLE", vLinker MC+, iOS-style adapters) | **tested** | Port `ble://MAC` (Linux). Dual-mode ELM327 v2.1 clone: about 6 PID/s. |
 | Cheap ELM327 v1.5 / v2.1 clones | should work | Often unreliable or slow; try `--slow` if the connection fails. |
-| Wi-Fi ELM327 adapters | not supported | They use a TCP socket instead of a serial port. |
-| Bluetooth LE adapters (iOS style) | not supported | No serial port; needs a dedicated BLE transport. |
+| Wi-Fi ELM327 adapters | should work | Port `socket://IP:PORT`, usually `socket://192.168.0.10:35000`. Not tested yet. |
 
 Cars: anything with a standard OBD-II / EOBD socket (petrol from about 2001, diesel from about
 2004 in the EU). Only the engine ECU's generic emissions data is read – no ABS, airbag or
 gearbox modules. Mode 06 needs a CAN protocol. The same table is shown in the Connection tab.
+
+### Bluetooth and Wi-Fi adapters
+
+Wireless adapters are used through a port address instead of a serial device:
+
+| Adapter | Port | Notes |
+|---|---|---|
+| Bluetooth (classic, SPP) | `rfcomm://AA:BB:CC:DD:EE:FF` | Linux. The channel is found automatically; force one with `rfcomm://MAC/2`. |
+| Bluetooth LE | `ble://AA:BB:CC:DD:EE:FF` | Linux. Works with dual-mode adapters too; add `?type=random` for random addresses. |
+| Wi-Fi | `socket://192.168.0.10:35000` | Join the adapter's Wi-Fi network first. |
+
+Find the address with a scan – in the web UI (*Connection → Find Bluetooth adapters*, then click the
+adapter) or in a terminal:
+
+```bash
+obdruid ports --scan                               # serial ports + nearby Bluetooth adapters
+obdruid -p ble://81:23:45:67:89:BA info            # use the address as the port
+obdruid -p rfcomm://01:23:45:67:89:BA live
+```
+
+Tips:
+
+- Many cheap adapters show up twice, e.g. **OBDII** (classic) and **OBDBLE** (LE): both work; classic is
+  usually a little faster.
+- An adapter talks to one device at a time – disconnect phone apps first.
+- No pairing and no root are needed on Linux. If the scan finds nothing, check that Bluetooth is on
+  (`bluetoothctl show`) and the ignition is on (many adapters sleep with the ignition off).
+- Bluetooth is slower than USB (cheap clones: about 6–7 parameters per second instead of 30–60).
 
 ## Tested hardware
 

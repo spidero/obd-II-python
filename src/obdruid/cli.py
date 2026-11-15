@@ -107,14 +107,29 @@ def main(
 
 
 @app.command()
-def ports():
-    """List serial ports (OBD adapters)."""
+def ports(
+    scan: bool = typer.Option(False, "--scan", "-s", help="Also search for Bluetooth adapters (Linux)."),
+    seconds: int = typer.Option(10, "--seconds", help="How long to search for Bluetooth devices."),
+):
+    """List serial ports and, with --scan, nearby Bluetooth OBD adapters."""
+    from .core import transports
+
     found = find_ports()
-    if not found:
-        console.print("No serial ports found.")
-        raise typer.Exit(1)
     for p in found:
         console.print(p)
+    if not found and not scan:
+        console.print("No serial ports found. Bluetooth adapter? Try: obdruid ports --scan")
+        raise typer.Exit(1)
+    if scan:
+        console.print(f"Searching for Bluetooth devices ({seconds} s)...")
+        devices = transports.scan_bluetooth(seconds)
+        if not devices:
+            console.print("No Bluetooth devices found (is Bluetooth on and the adapter powered?).")
+            return
+        t = Table("Name", "Type", "Use as --port", "OBD?")
+        for d in devices:
+            t.add_row(d.name or "?", "BLE" if d.kind == "ble" else "classic", d.url, "yes" if d.likely_obd else "")
+        console.print(t)
 
 
 @app.command()
