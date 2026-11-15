@@ -8,7 +8,7 @@ A small OBD-II workshop tool in Python: live data, reading and clearing trouble 
 freeze frame, on-board monitor tests (mode 06), readiness monitors, fuel consumption and a
 **vehicle health check** with a 0–100 score. One core, three front ends:
 
-- **CLI** – `obd-tool info | live | dtc | tests | clear | health | history | pids | ports`
+- **CLI** – `obd-tool info | live | dtc | tests | clear | health | history | pids | ports | supporter`
 - **Web UI** – `obd-tool web`, open it from a laptop or a phone
 - **Desktop GUI** – `obd-tool gui`, the same UI in a native window (pywebview)
 
@@ -26,6 +26,28 @@ A built-in **ELM327 simulator** (`--sim`) lets you run everything without a car.
 | Gauges and alarms | Monitor tests (mode 06) | Freeze frame | Before / after comparison |
 |---|---|---|---|
 | ![Gauges](docs/screenshots/sim-dashboard-gauges.png) | ![Tests](docs/screenshots/sim-monitor-tests.png) | ![Freeze frame](docs/screenshots/sim-freeze-frame.png) | ![Compare](docs/screenshots/sim-history-compare.png) |
+
+## Quick start
+
+1. **Install** (Linux, Python 3.10+; details in [Install](#install)):
+   ```bash
+   git clone https://github.com/spidero/obd-II-python.git && cd obd-II-python
+   python3 -m venv --system-site-packages .venv && .venv/bin/pip install -e ".[gui]"
+   ```
+2. **Try it without a car** – the built-in simulator plays a car with a few trouble codes:
+   ```bash
+   .venv/bin/obd-tool --sim gui
+   ```
+3. **Connect a car:** plug an ELM327 adapter into the OBD-II socket (under the dashboard) and into
+   USB, turn the ignition on (or start the engine) and run `.venv/bin/obd-tool gui`. The adapter is
+   found automatically; `obd-tool ports` lists the serial ports if it is not.
+4. **First checks:** the *Trouble codes* tab shows stored and pending codes with descriptions,
+   *Health check* (engine warm and idling) gives a 0–100 score with explanations.
+
+No adapter at your desk? Plug it into a Raspberry/Orange Pi in the car, run `obd-tool web --host 0.0.0.0`
+there and open the UI from a phone or laptop, or use `obd-tool gui --remote <pi-address>`.
+
+At start the app shows a short *Support OBD Tool* window – see [Support](#support).
 
 ## Supported adapters
 
@@ -277,12 +299,24 @@ tests/                pytest, all against the simulator
 
 ## Support
 
-OBD Tool is free and open source. If it saved you a trip to the workshop, you can support its development:
+OBD Tool is free, open source and has no ads. It is made by Piotr Skwarna in his spare time.
+If it saved you a trip to the workshop, please support its development:
 
 - [GitHub Sponsors](https://github.com/sponsors/spidero)
 - [PayPal](https://paypal.me/spidero)
 
-A star on GitHub, a bug report or telling a friend help too.
+**Supporter key.** The web UI and the desktop app show a *Support OBD Tool* window at every start.
+Supporters receive a personal key that hides it and shows *Licensed to: your name* in *About*.
+Activate the key in that window (*I have a key*), in *About*, or in a terminal:
+
+```bash
+obd-tool supporter OBDT1-...      # activate (on a Pi: once for all browsers)
+obd-tool supporter                # show the current key
+obd-tool supporter --remove
+```
+
+Keys are checked offline – no account and no internet connection needed. A star on GitHub,
+a bug report or telling a friend help too.
 
 ## Contributing
 
