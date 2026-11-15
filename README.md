@@ -307,6 +307,8 @@ If it saved you a trip to the workshop, please support its development:
 
 **Supporter key.** The web UI and the desktop app show a *Support OBD Tool* window at every start.
 Supporters receive a personal key that hides it and shows *Licensed to: your name* in *About*.
+To get one, support the project and write to [piotr.skwarna@gmail.com](mailto:piotr.skwarna@gmail.com?subject=OBD%20Tool%20supporter%20key)
+with the payment confirmation and the name to show in the program; the key comes by e-mail.
 Activate the key in that window (*I have a key*), in *About*, or in a terminal:
 
 ```bash

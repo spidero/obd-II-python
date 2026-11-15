@@ -545,7 +545,9 @@ def supporter(
     if active:
         console.print(f"Licensed to: {active.name} (key {active.id}, issued {active.issued})")
     else:
-        console.print("No supporter key. Support the project and get one: " + about.SUPPORT_LINKS[0]["url"])
+        console.print("No supporter key. Support the project: " + ", ".join(l["url"] for l in about.SUPPORT_LINKS))
+        console.print(f"then write to {about.CONTACT_EMAIL} with the payment confirmation and the name to show; "
+                      "the key comes by e-mail.")
 
 
 @app.command()

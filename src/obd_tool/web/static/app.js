@@ -1239,6 +1239,9 @@ async function showSupport(force = false) {
   if (a.supporter && a.supporter.active && !force) return;
   $("#support-links").replaceChildren(...a.support.map(l =>
     el("a", { class: "btn btn-primary", href: l.url, target: "_blank", rel: "noopener", text: l.name })));
+  // "... write to {email} ..." with the address as a mailto link
+  const [before, after] = t("After supporting, write to {email} with the payment confirmation and the name to show in the program. The key comes by e-mail.").split("{email}");
+  $("#support-how").replaceChildren(before, el("a", { href: a.key_request }, a.contact), after || "");
   $("#support-key-error").hidden = true;
   if (force) $("#support-key-box").open = true;
   const dlg = $("#dlg-support");

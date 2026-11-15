@@ -5,6 +5,8 @@ from __future__ import annotations
 AUTHOR = "Piotr Skwarna"
 LICENSE = "GPL-2.0-or-later"
 COPYRIGHT = f"Copyright (C) 2026 {AUTHOR}"
+CONTACT_EMAIL = "piotr.skwarna@gmail.com"  # supporter keys and other private matters
+KEY_REQUEST_URL = f"mailto:{CONTACT_EMAIL}?subject=OBD%20Tool%20supporter%20key"
 
 REPO_URL = "https://github.com/spidero/obd-II-python"
 ISSUES_URL = REPO_URL + "/issues"
