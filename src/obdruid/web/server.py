@@ -69,8 +69,9 @@ class AppState:
     def _remember_vehicle(self) -> None:
         """Pick the profile of the connected car and note the settings that worked."""
         try:
-            vehicle = self.storage.select_for_vin(self.session.vin(), simulated=self.session.simulated)
             info = self.session.adapter_info()
+            vehicle = self.storage.select_for_vin(self.session.vin(), simulated=self.session.simulated,
+                                                  port=info.port)
             if not self.session.simulated:
                 self.storage.update(vehicle["id"], connection={
                     "port": info.port, "baudrate": self.settings.baudrate, "protocol": info.protocol_id,

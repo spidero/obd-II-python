@@ -25,8 +25,8 @@ ADAPTERS = [
     {"name": "Other USB ELM327 / STN adapters (OBDLink SX/EX, vLinker FD/MC USB)", "status": "should work",
      "notes": "Anything that shows up as a serial port and speaks the ELM327 command set."},
     {"name": "Bluetooth ELM327 (classic and dual-mode, e.g. \"OBDII\")", "status": "tested",
-     "notes": "Port rfcomm://MAC – no pairing tool or rfcomm bind needed (Linux). Tested with an ELM327 v2.1 clone: "
-              "about 7 PID/s. Find it with: obdruid ports --scan."},
+     "notes": "Port rfcomm://MAC – no pairing tool or rfcomm bind needed (Linux). Tested with the blue "
+              "\"ELM 327 MINI Interface\" (v2.1 clone): about 7 PID/s. Find it with: obdruid ports --scan."},
     {"name": "Bluetooth LE ELM327 (e.g. \"OBDBLE\", vLinker MC+, iOS-style adapters)", "status": "tested",
      "notes": "Port ble://MAC (Linux). Tested with a dual-mode ELM327 v2.1 clone: about 6 PID/s."},
     {"name": "Cheap ELM327 v1.5 / v2.1 clones", "status": "should work",

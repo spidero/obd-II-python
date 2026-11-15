@@ -65,7 +65,7 @@ At start the app shows a short *Support OBDruid* window – see [Support](#suppo
 |---|---|---|
 | Vgate vLinker FS (USB) | **tested** | FTDI serial, ELM327 v2.3 compatible, 115200 baud. Reference adapter. |
 | Other USB ELM327 / STN adapters (OBDLink SX/EX, vLinker FD/MC USB) | should work | Anything that shows up as a serial port and speaks the ELM327 command set. |
-| Bluetooth ELM327, classic and dual-mode (e.g. "OBDII") | **tested** | Port `rfcomm://MAC` (Linux) – no pairing tool or `rfcomm bind` needed. ELM327 v2.1 clone: about 7 PID/s. |
+| Bluetooth ELM327, classic and dual-mode (e.g. "OBDII") | **tested** | Port `rfcomm://MAC` (Linux) – no pairing tool or `rfcomm bind` needed. Tested with the common blue **"ELM 327 MINI Interface"** (v2.1 clone): about 7 PID/s. |
 | Bluetooth LE ELM327 (e.g. "OBDBLE", vLinker MC+, iOS-style adapters) | **tested** | Port `ble://MAC` (Linux). Dual-mode ELM327 v2.1 clone: about 6 PID/s. |
 | Cheap ELM327 v1.5 / v2.1 clones | should work | Often unreliable or slow; try `--slow` if the connection fails. |
 | Wi-Fi ELM327 adapters | should work | Port `socket://IP:PORT`, usually `socket://192.168.0.10:35000`. Not tested yet. |
@@ -104,7 +104,8 @@ Tips:
 
 ## Tested hardware
 
-- Adapter: Vgate **vLinker FS** USB (FTDI, ELM327 v2.3 compatible), 115200 baud
+- Adapters: Vgate **vLinker FS** USB (FTDI, ELM327 v2.3 compatible), 115200 baud; blue **"ELM 327 MINI
+  Interface"** Bluetooth clone (ELM327 v2.1, dual-mode: "OBDII" classic + "OBDBLE" LE)
 - Cars:
   - petrol engine, ISO 15765-4 CAN 11 bit / 500 kbit, single engine ECU (7E8), 33 live parameters
   - Ford diesel with DPF, ISO 15765-4 CAN 11 bit / 500 kbit, VIN reported (16 characters),
