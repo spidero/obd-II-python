@@ -294,6 +294,7 @@ Sets that come with the program:
 | Set | For | Status |
 |---|---|---|
 | Ford diesel – particulate filter | soot load, distance since regeneration, regeneration status, differential pressure, exhaust temperatures | **unverified** candidates converted from [OBDb/Ford](https://github.com/OBDb/Ford) (CC BY-SA 4.0); not yet confirmed on a car |
+| Hyundai i30 (2007–2012) petrol – engine | oil temperature, commanded idle speed, MAP sensor voltage, injection times (service 21 blocks) | **unverified** candidates converted from [OBDb/Hyundai-i30](https://github.com/OBDb/Hyundai-i30) (CC BY-SA 4.0) |
 | Simulator – particulate filter | demo for `--sim` | made-up identifiers |
 
 Your own set is a TOML file, imported in the same card (or put in `~/.local/share/obdruid/pidsets/`):
@@ -513,7 +514,7 @@ GNU General Public License as published by the Free Software Foundation, either
 (SPDX: `GPL-2.0-or-later`).
 
 PID set files converted from community databases keep the license of their source, stated at the
-top of each file: [`ford-diesel-dpf.toml`](src/obdruid/core/pidsets/ford-diesel-dpf.toml) is derived
+top of each file: the Ford and Hyundai sets in [`core/pidsets`](src/obdruid/core/pidsets/) are derived
 from [OBDb](https://github.com/OBDb) and licensed CC BY-SA 4.0.
 
 This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
