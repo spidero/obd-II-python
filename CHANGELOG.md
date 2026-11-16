@@ -8,7 +8,7 @@
   once and then shown like any other parameter (dashboard, CSV, `obdruid live`). Read only by design.
   New card in *Vehicle info*, `obdruid did` for a single raw read, a demo set in the simulator
   (`--sim-fault dpf_regen`, `dpf_full`).
-- First set for real cars: **Ford diesel – particulate filter**, candidates converted from OBDb (CC BY-SA 4.0),
+- First sets for real cars: **Ford diesel – particulate filter** and **Hyundai i30 (2007–2012) petrol – engine**, candidates converted from OBDb (CC BY-SA 4.0),
   marked unverified until confirmed on a car. Service 21 data blocks (Hyundai/Kia, Toyota) can be read too.
 
 ### Changed

@@ -138,6 +138,11 @@ def test_builtin_sets_are_valid_and_translated(tmp_path):
     ford = next(s for s in sets if s.id == "ford-diesel-dpf")
     assert ford.license == "CC BY-SA 4.0" and "OBDb" in ford.source          # attribution travels with the data
     assert all(p.status == "unverified" for p in ford.params)                # nothing claimed before a car test
+    i30 = next(s for s in sets if s.id == "hyundai-i30-fd-petrol")
+    assert i30.license == "CC BY-SA 4.0" and all(p.status == "unverified" for p in i30.params)
+    assert i30.suggested_for("KMHDC51DAAU123456", 2010, "petrol") and not i30.suggested_for("KMHDC51DAAU123456", 2015, "petrol")
+    oil = next(p for p in i30.params if p.name == "OIL_TEMP")
+    assert oil.decode(bytes(34) + bytes([184])) == 90 and oil.formula.bytes_needed == 35   # 184 * 0.75 - 48
     assert ford.suggested_for("WF0XXXTTFX1234567", 2010, "diesel") and not ford.suggested_for(None, None, "diesel")
     assert custom_pids.byte_name(0) == "A" and custom_pids.byte_name(27) == "AB"
     assert all(custom_pids.byte_index(custom_pids.byte_name(n)) == n for n in range(700))

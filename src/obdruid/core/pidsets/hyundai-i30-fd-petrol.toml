@@ -1,0 +1,106 @@
+# Hyundai i30 (FD, 2007-2012) petrol - engine data blocks read with service 21.
+#
+# NOT VERIFIED ON A CAR YET. Converted from the community database OBDb
+# (https://github.com/OBDb/Hyundai-i30, signalsets/v3/default.json); the blocks 21 01 and
+# 21 02 are reported there for a 2010 car. Byte positions were derived from the bit offsets
+# of the source and still have to be confirmed: compare the oil temperature with the coolant
+# temperature on a warm engine, and the injection times with the engine load.
+# `obdruid did 2101` shows the raw block.
+#
+# License of this file: CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/),
+# the license of OBDb. Changes made: converted to the OBDruid PID set format (bit offsets
+# to byte letters), Polish labels added, injection time read as microseconds.
+format = 1
+id = "hyundai-i30-fd-petrol"
+name = "Hyundai i30 (2007–2012) petrol – engine"
+source = "OBDb/Hyundai-i30 (github.com/OBDb/Hyundai-i30), converted; not verified on a car"
+license = "CC BY-SA 4.0"
+note = "Candidates from a community database. One request returns a whole block, so all parameters of a block cost a single read."
+
+[match]
+wmi = ["KMH", "TMA", "NLH"]   # Hyundai: Korea, Czechia, Turkey
+fuel = "petrol"
+years = [2007, 2012]
+
+[[params]]
+key = "OIL_TEMP"
+label = "Engine oil temperature"
+label_pl = "Temperatura oleju silnika"
+request = "2101"
+formula = "AI*0.75-48"        # byte 34 of the block
+unit = "°C"
+interval = 2
+min = 0
+max = 160
+warn_high = 130
+alarm_high = 145
+
+[[params]]
+key = "IDLE_RPM_TARGET"
+label = "Commanded idle speed"
+label_pl = "Zadane obroty biegu jałowego"
+request = "2101"
+formula = "J*10"
+unit = "rpm"
+
+[[params]]
+key = "MAP_VOLTAGE"
+label = "MAP sensor voltage"
+label_pl = "Napięcie czujnika MAP"
+request = "2101"
+formula = "(P*256+O)*0.0048828125"   # low byte first
+unit = "V"
+decimals = 2
+
+[[params]]
+key = "INJ_TIME_1"
+label = "Injection time cyl. 1"
+label_pl = "Czas wtrysku cyl. 1"
+request = "2102"
+formula = "(X*256+W)*0.0008192"
+unit = "ms"
+decimals = 2
+note = "The source lists raw x 0.8192 as milliseconds, which gives impossible values; read here as microseconds."
+
+[[params]]
+key = "INJ_TIME_2"
+label = "Injection time cyl. 2"
+label_pl = "Czas wtrysku cyl. 2"
+request = "2102"
+formula = "(Z*256+Y)*0.0008192"
+unit = "ms"
+decimals = 2
+
+[[params]]
+key = "INJ_TIME_3"
+label = "Injection time cyl. 3"
+label_pl = "Czas wtrysku cyl. 3"
+request = "2102"
+formula = "(AB*256+AA)*0.0008192"
+unit = "ms"
+decimals = 2
+
+[[params]]
+key = "INJ_TIME_4"
+label = "Injection time cyl. 4"
+label_pl = "Czas wtrysku cyl. 4"
+request = "2102"
+formula = "(AD*256+AC)*0.0008192"
+unit = "ms"
+decimals = 2
+
+[[params]]
+key = "FUEL_CUT"
+label = "Fuel cut (raw)"
+label_pl = "Odcięcie paliwa (wartość surowa)"
+request = "2100"
+formula = "L"
+note = "Raw value from the source; the meaning of the values is not documented."
+
+[[params]]
+key = "KNOCK"
+label = "Knock detected (raw)"
+label_pl = "Wykryte spalanie stukowe (wartość surowa)"
+request = "2100"
+formula = "Z"
+note = "Raw value from the source; the meaning of the values is not documented."
