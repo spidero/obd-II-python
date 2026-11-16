@@ -148,6 +148,10 @@ need no Python and no installation:
   No FUSE on your system? Add `--appimage-extract-and-run` as the first argument.
   Serial adapters need access to the port: `sudo usermod -aG dialout $USER`, then log in again.
 - Try it without a car: tick *Simulator* in the *Connection* tab, or start with `--sim`.
+- **Code signing (Windows):** free code signing provided by [SignPath.io](https://about.signpath.io/),
+  certificate by [SignPath Foundation](https://signpath.org/) – from the first release after the project is
+  approved; see the [code signing policy](CODE_SIGNING_POLICY.md), which also holds the
+  [privacy policy](CODE_SIGNING_POLICY.md#privacy-policy) (in short: no data leaves your computer).
 - Not in these builds yet: Bluetooth LE on Windows (use a USB adapter, or pair a classic Bluetooth
   adapter and use its COM port).
 
