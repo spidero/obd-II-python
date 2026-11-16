@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import csv
-import errno
 import json
 import logging
 import os
@@ -704,33 +703,52 @@ def gui(
     run(_settings(ctx))
 
 
-def _output_closed(error: OSError) -> bool:
-    """True when the error comes from writing to a reader that went away (`| more`, `| head`, `grep -q`).
-    Linux reports EPIPE; Windows reports EINVAL for the same thing."""
-    if isinstance(error, BrokenPipeError):
-        return True
-    if error.errno not in (errno.EPIPE, errno.EINVAL):
-        return False
-    try:
-        sys.stdout.flush()
-    except OSError:
-        return True
-    return False
+class _OutputClosed(BaseException):
+    """Writing to stdout failed: whoever read the output went away (`| more`, `| head`, `grep -q`).
+    A BaseException, so that neither Click nor Typer turns it into an error message on the way out."""
+
+
+class _GuardedOutput:
+    """stdout that reports a failed write as _OutputClosed. Linux says EPIPE, Windows EINVAL - and
+    Windows does not fail a second time, so the failure has to be caught where it happens."""
+
+    def __init__(self, stream):
+        self._stream = stream
+
+    def write(self, text):
+        try:
+            return self._stream.write(text)
+        except OSError as e:
+            raise _OutputClosed() from e
+
+    def flush(self):
+        try:
+            return self._stream.flush()
+        except OSError as e:
+            raise _OutputClosed() from e
+
+    def __getattr__(self, name):
+        return getattr(self._stream, name)
 
 
 def run() -> None:
     """The `obdruid` command: the Typer app, ending quietly when whoever reads the output stops reading."""
+    stdout = sys.stdout
+    if stdout is not None and not isinstance(stdout, _GuardedOutput):
+        sys.stdout = _GuardedOutput(stdout)
     try:
         app()
-    except OSError as e:
-        if not _output_closed(e):
-            raise
+    except _OutputClosed:
         # nothing more can be shown; point stdout at nothing so the final flush does not fail again
         try:
-            os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+            os.dup2(os.open(os.devnull, os.O_WRONLY), stdout.fileno())
         except (OSError, ValueError, AttributeError):
             pass
+        sys.stdout = stdout
         sys.exit(1)
+    finally:
+        if isinstance(sys.stdout, _GuardedOutput):
+            sys.stdout = stdout
 
 
 if __name__ == "__main__":  # pragma: no cover

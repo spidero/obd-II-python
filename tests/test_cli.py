@@ -74,17 +74,19 @@ def test_closed_output_ends_quietly():
     import subprocess
     import sys
 
-    code = ("import sys, obdruid.cli as c\n"
-            "def big():\n"
-            "    for i in range(200000): print('line', i)\n"
+    code = ("import typer, obdruid.cli as c\n"
+            "big = typer.Typer()\n"
+            "@big.command()\n"
+            "def lines():\n"
+            "    for i in range(30000): c.console.print('line', i, 'x' * 60)\n"
             "c.app = big\n"
             "c.run()\n")
     proc = subprocess.Popen([sys.executable, "-c", code], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     proc.stdout.read(1)
     proc.stdout.close()                       # the reader stops, like head or grep -q
     stderr = proc.stderr.read().decode(errors="replace")
-    assert proc.wait(timeout=60) == 1
-    assert "Traceback" not in stderr and "Exception ignored" not in stderr
+    assert proc.wait(timeout=120) == 1, stderr
+    assert "Traceback" not in stderr and "Exception ignored" not in stderr and "Error" not in stderr, stderr
 
 
 def test_other_os_errors_are_not_hidden(monkeypatch):
@@ -98,3 +100,4 @@ def test_other_os_errors_are_not_hidden(monkeypatch):
     monkeypatch.setattr(cli, "app", failing)
     with pytest.raises(OSError):
         cli.run()
+    assert not isinstance(__import__("sys").stdout, cli._GuardedOutput)   # stdout is given back
