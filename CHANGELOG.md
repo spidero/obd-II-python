@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.7.0 – 2026-11-16
+
+Manufacturer parameters for more makes.
 
 ### Added
 - **PID sets for more makes:** VW group (VW, Audi, Seat, Škoda, Cupra), Toyota, Hyundai / Kia and Renault / Dacia –
