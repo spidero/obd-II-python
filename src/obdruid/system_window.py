@@ -46,9 +46,10 @@ def clean_env(environ: dict | None = None) -> dict:
             env.pop(key[:-5], None)
     bundle = getattr(sys, "_MEIPASS", None)
     if bundle and env.get("LD_LIBRARY_PATH"):
-        kept = [p for p in env["LD_LIBRARY_PATH"].split(os.pathsep) if p and not p.startswith(bundle)]
+        # always ":" - the variable belongs to the Linux dynamic loader, whatever os.pathsep is
+        kept = [p for p in env["LD_LIBRARY_PATH"].split(":") if p and not p.startswith(bundle)]
         if kept:
-            env["LD_LIBRARY_PATH"] = os.pathsep.join(kept)
+            env["LD_LIBRARY_PATH"] = ":".join(kept)
         else:
             env.pop("LD_LIBRARY_PATH")
     for key in ("PYTHONHOME", "PYTHONPATH", "PYTHONNOUSERSITE", "_MEIPASS2", "_PYI_APPLICATION_HOME_DIR",
