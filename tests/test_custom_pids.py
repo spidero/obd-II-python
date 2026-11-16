@@ -68,6 +68,7 @@ formula = "A+B"
     ("(A<<8|B)&0x0FFF", bytes([0xF1, 0x23]), 0x123),
     ("-A%7+max(A,B)", bytes([10, 3]), 14),         # -10 % 7 = 4 in Python
     ("A//2", bytes([7]), 3),
+    ("AB/10+Z", bytes(25) + bytes([1, 0, 141]), 15.1),   # Z is byte 26, AA 27, AB 28
 ])
 def test_formula_values(text, data, expected):
     assert Formula(text)(data) == pytest.approx(expected)
@@ -82,7 +83,7 @@ def test_formula_reports_missing_bytes_and_bad_maths_as_no_value():
 
 @pytest.mark.parametrize("text", [
     "__import__('os').system('true')", "A.real", "open('x')", "A if B else C", "[A]", "A**B", "lambda: A",
-    "'text'", "True", "AB + 1", "a + 1", "A; B", "signed(A, x=1)", "eval(A)", "A == B", "~A", "", "A" * 300,
+    "'text'", "True", "ABC + 1", "a + 1", "A; B", "signed(A, x=1)", "eval(A)", "A == B", "~A", "", "A" * 300,
     "(" * 150 + "A" + ")" * 150,
 ])
 def test_formula_rejects_everything_but_arithmetic(text):
@@ -111,6 +112,7 @@ def test_parse_set():
     (('request = "22DDFF"', 'request = "3101FF00"'), "Service 31 is not allowed"),   # routine (forced regeneration)
     (('request = "22DDFF"', 'request = "1003"'), "Service 10 is not allowed"),       # session change
     (('request = "22DDFF"', 'request = "04"'), "Invalid request"),
+    (('request = "22DDFF"', 'request = "210101"'), "takes 1 identifier byte"),
     (('request = "22DDFF"', 'request = "22DD"'), "takes 2 identifier byte"),
     (('header = "7E2"', 'header = "720"'), "Unsupported header"),
     (('formula = "A+B"', 'formula = "__import__(1)"'), "Invalid formula"),
@@ -132,7 +134,13 @@ def test_parse_set_refuses_broken_files():
 
 def test_builtin_sets_are_valid_and_translated(tmp_path):
     sets, errors = custom_pids.load_sets(None)
-    assert errors == [] and "simulator" in [s.id for s in sets]
+    assert errors == [] and {"simulator", "ford-diesel-dpf"} <= {s.id for s in sets}
+    ford = next(s for s in sets if s.id == "ford-diesel-dpf")
+    assert ford.license == "CC BY-SA 4.0" and "OBDb" in ford.source          # attribution travels with the data
+    assert all(p.status == "unverified" for p in ford.params)                # nothing claimed before a car test
+    assert ford.suggested_for("WF0XXXTTFX1234567", 2010, "diesel") and not ford.suggested_for(None, None, "diesel")
+    assert custom_pids.byte_name(0) == "A" and custom_pids.byte_name(27) == "AB"
+    assert all(custom_pids.byte_index(custom_pids.byte_name(n)) == n for n in range(700))
     for s in sets:
         assert s.source, s.id                      # every shipped set says where its data comes from
         for p in s.params:
@@ -148,6 +156,9 @@ def test_builtin_sets_are_valid_and_translated(tmp_path):
 def test_read_did(session):
     vin = session.read_did("22 f1 90")
     assert vin.ok and vin.data == b"SIM1234567890ABCD" and vin.result == "ok"   # multi frame answer
+    block = session.read_did("2101")                                             # service 21 data block
+    assert block.ok and len(block.data) == 32 and block.data[27] == 141
+    assert session.read_did("2102").nrc == 0x31
     refused = session.read_did("22DDFF")
     assert not refused.ok and refused.nrc == 0x31 and refused.result == "nrc31"
     assert session.read_did("22DE01", "7E1").data is not None                   # transmission module
@@ -201,14 +212,14 @@ def test_one_request_serves_all_parameters_of_an_identifier(tmp_path):
         assert results["X_SIMULATOR_NOT_IN_THIS_CAR"] == "nrc31"
         assert storage.get(vehicle["id"])["pid_probe"] == results           # remembered in the profile
         keys = [p.key for p in s.supported_params() if p.source == "simulator"]
-        assert "X_SIMULATOR_NOT_IN_THIS_CAR" not in keys and len(keys) == 8
+        assert "X_SIMULATOR_NOT_IN_THIS_CAR" not in keys and len(keys) == 9
         seen = s._emulator.commands_seen
         before = len(seen)
         values = {r.key: r.value for r in s.read(keys)}
         assert seen[before:].count("22DD05") == 1                             # two parameters, one request
         assert values["X_SIMULATOR_DPF_REGEN"] == "active" and values["X_SIMULATOR_DPF_REGEN_REQUEST"] == "yes"
         assert values["X_SIMULATOR_DPF_TEMP"] > 550 and values["X_SIMULATOR_INJ_CORRECTION_1"] == -0.35
-        assert 70 < values["X_SIMULATOR_GEARBOX_OIL_TEMP"] < 85
+        assert 70 < values["X_SIMULATOR_GEARBOX_OIL_TEMP"] < 85 and values["X_SIMULATOR_MODULE_VOLTAGE"] == 14.1
         # the second connection does not probe again
         before = len(seen)
         custom_pids.apply(s, storage, storage.get(vehicle["id"]))
@@ -217,7 +228,8 @@ def test_one_request_serves_all_parameters_of_an_identifier(tmp_path):
 
 def test_dpf_full_fault():
     with ObdSession(ConnectionSettings(simulate=True, sim_faults=("dpf_full",))) as s:
-        soot = next(p for p in custom_pids.load_sets(None)[0][0].params if p.name == "DPF_SOOT")
+        sim = next(x for x in custom_pids.load_sets(None)[0] if x.id == "simulator")
+        soot = next(p for p in sim.params if p.name == "DPF_SOOT")
         assert soot.decode(s.read_did(soot.request).data) == 96.0
 
 
@@ -231,27 +243,33 @@ def client(tmp_path):
 
 def test_web_sets_for_a_real_car_profile(client):
     data = client.get("/api/pidsets").json()
-    assert data["sets"] == [] and data["connected"] is False   # the simulator set is hidden without the simulator
+    ids = [s["id"] for s in data["sets"]]
+    assert "simulator" not in ids and data["connected"] is False   # the demo set is hidden without the simulator
+    ford = next(s for s in data["sets"] if s["id"] == "ford-diesel-dpf")
+    assert ford["enabled"] is False and ford["suggested"] is False and ford["license"] == "CC BY-SA 4.0"
     assert client.post("/api/pidsets", json={"text": "format = 1"}).status_code == 400
     refused = client.post("/api/pidsets", json={"text": SET.replace('"22DDFF"', '"2EDDFF"')})
     assert refused.status_code == 400 and "Service 2E is not allowed" in refused.json()["detail"]
 
+    def own(data):
+        return next(s for s in data["sets"] if s["id"] == "test-car")
+
     data = client.post("/api/pidsets", json={"text": SET}).json()
-    assert [s["id"] for s in data["sets"]] == ["test-car"]
-    assert data["sets"][0]["enabled"] is False and data["sets"][0]["builtin"] is False
+    assert own(data)["enabled"] is False and own(data)["builtin"] is False
     data = client.put("/api/pidsets/enabled", json={"ids": ["test-car", "unknown"]}).json()
-    assert data["sets"][0]["enabled"] is True
+    assert own(data)["enabled"] is True
     assert client.get("/api/vehicles").json()["vehicles"][0]["pidsets"] == ["test-car"]
     assert client.post("/api/pidsets/probe").status_code == 409            # needs a connection
-    assert client.delete("/api/pidsets/test-car").json()["sets"] == []
+    assert "test-car" not in [s["id"] for s in client.delete("/api/pidsets/test-car").json()["sets"]]
+    assert client.delete("/api/pidsets/ford-diesel-dpf").status_code == 404   # built-in sets stay
     assert client.delete("/api/pidsets/test-car").status_code == 404
 
 
 def test_web_simulator_flow(client):
     assert client.post("/api/connect", json={"simulate": True}).status_code == 200
     data = client.get("/api/pidsets").json()
-    sim = data["sets"][0]
-    assert sim["id"] == "simulator" and sim["enabled"] and sim["locked"] and data["connected"]
+    sim = next(s for s in data["sets"] if s["id"] == "simulator")
+    assert sim["enabled"] and sim["locked"] and data["connected"]
     probes = {p["name"]: p["probe"] for p in sim["params"]}
     assert probes["DPF_SOOT"] == "ok" and probes["NOT_IN_THIS_CAR"] == "nrc31"
 

@@ -270,14 +270,15 @@ PID 5E. “Save & reset trip” keeps the trip in the history.
 ### Manufacturer parameters (PID sets)
 
 Standard OBD-II does not show everything the car knows – the soot load of a diesel particulate
-filter, for example, is only available under the car maker's own identifiers (UDS service 22).
+filter, for example, is only available under the car maker's own identifiers (UDS service 22, or
+service 21 on e.g. Hyundai/Kia and Toyota).
 OBDruid reads such values from **PID set files**, so a new car needs a text file, not new code.
 
 - *Vehicle info → Manufacturer parameters*: switch a set on for the car. The program asks once for
   every parameter of the set ("probing") and keeps the ones the car answers; they then appear among
   the normal parameters – dashboard tiles, charts, alarms, CSV, `obdruid live`.
-- **Reading only.** A set may use service 22 (and mode 01) – nothing else. Requests that write to or
-  control a module (2E, 2F, 31, session changes...) are refused when the file is loaded.
+- **Reading only.** A set may use the reading services 22, 21 and 01 – nothing else. Requests that
+  write to or control a module (2E, 2F, 31, session changes...) are refused when the file is loaded.
 - Works on cars with 11-bit CAN, with the modules at `7E0`–`7E7` (engine, transmission...).
 - Parameters marked **unverified** come from lists that were not confirmed on a real car: check the
   values before you rely on them.
@@ -287,6 +288,13 @@ OBDruid reads such values from **PID set files**, so a new car needs a text file
 | Sets for the car | On the dashboard |
 |---|---|
 | ![PID sets](docs/screenshots/sim-pid-sets.png) | ![DPF tiles](docs/screenshots/sim-dashboard-dpf.png) |
+
+Sets that come with the program:
+
+| Set | For | Status |
+|---|---|---|
+| Ford diesel – particulate filter | soot load, distance since regeneration, regeneration status, differential pressure, exhaust temperatures | **unverified** candidates converted from [OBDb/Ford](https://github.com/OBDb/Ford) (CC BY-SA 4.0); not yet confirmed on a car |
+| Simulator – particulate filter | demo for `--sim` | made-up identifiers |
 
 Your own set is a TOML file, imported in the same card (or put in `~/.local/share/obdruid/pidsets/`):
 
@@ -305,9 +313,9 @@ years = [2006, 2014]
 key = "DPF_SOOT"
 label = "DPF soot load"
 label_pl = "Zapełnienie DPF sadzą"   # optional Polish label
-request = "22XXXX"               # service 22 + identifier
+request = "22XXXX"               # service 22 + identifier (or 21XX, 01XX)
 header = "7E0"                   # module address, default 7E0 (engine)
-formula = "(A*256+B)/100"        # A, B, C... = data bytes of the answer
+formula = "(A*256+B)/100"        # A, B, C... Z, AA, AB... = data bytes of the answer
 unit = "%"
 decimals = 1
 interval = 5                     # seconds between reads (optional)
@@ -323,7 +331,7 @@ operations (`& | ^ << >>`) and `signed(A)`, `signed(A,B)`, `bit(A,n)`, `abs()`, 
 A state instead of a number: `map = { 0 = "idle", 1 = "active" }`. Several parameters may share one
 identifier (different bytes or bits) – it is asked for only once per read.
 
-`obdruid did 22XXXX [--header 7E1]` shows the raw bytes of one identifier, with the letters the
+`obdruid did 22XXXX [--header 7E1]` (or `obdruid did 21XX`) shows the raw bytes of one identifier, with the letters the
 formula will see – handy for checking a definition. A complete example is
 [`simulator.toml`](src/obdruid/core/pidsets/simulator.toml). Found identifiers that work on your
 car? Please share them in an issue or a pull request.
@@ -503,6 +511,10 @@ OBDruid is free software: you can redistribute it and/or modify it under the ter
 GNU General Public License as published by the Free Software Foundation, either
 [version 2 of the License](LICENSE), or (at your option) any later version
 (SPDX: `GPL-2.0-or-later`).
+
+PID set files converted from community databases keep the license of their source, stated at the
+top of each file: [`ford-diesel-dpf.toml`](src/obdruid/core/pidsets/ford-diesel-dpf.toml) is derived
+from [OBDb](https://github.com/OBDb) and licensed CC BY-SA 4.0.
 
 This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
 without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.

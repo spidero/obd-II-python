@@ -1373,7 +1373,7 @@ function renderPidSets(data) {
       el("thead", {}, el("tr", {}, ...["Request", "Module", "Name", "Unit", "Status", "In this car"].map(h => el("th", { text: h })))), rows);
     const details = el("details", { class: "pidset" },
       el("summary", { text: t("{n} parameters", { n: s.params.length }) }),
-      s.source ? el("p", { class: "muted" }, `${t("Source")}: ${s.source}`) : null,
+      s.source ? el("p", { class: "muted" }, `${t("Source")}: ${s.source}` + (s.license ? ` · ${t("License")}: ${s.license}` : "")) : null,
       s.note ? el("p", { class: "muted" }, s.note) : null,
       el("div", { class: "table-wrap" }, table));
     box.append(el("div", { class: "pidset-item" }, head, details));

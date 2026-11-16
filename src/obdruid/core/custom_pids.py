@@ -6,11 +6,12 @@ diesel particulate filter. Car makers expose such values through UDS service 22
 they live in TOML files instead of the code: built-in ones in ``core/pidsets`` and the
 user's own in the data directory.
 
-Read only by design: a set may only use service 01 or 22. Everything that writes to or
-controls a module (2E, 2F, 31, 27, 10, 14, 11...) is refused when the file is loaded.
+Read only by design: a set may only use the reading services 01, 21 (ReadDataByLocalIdentifier,
+used by e.g. Hyundai/Kia and Toyota) and 22. Everything that writes to or controls a module
+(2E, 2F, 31, 27, 10, 14, 11...) is refused when the file is loaded.
 
-Formulas use the Torque convention - A, B, C... are the data bytes of the answer - and are
-evaluated by a small whitelist interpreter (never ``eval``).
+Formulas use the Torque convention - A, B, C... Z, AA, AB... are the data bytes of the answer -
+and are evaluated by a small whitelist interpreter (never ``eval``).
 """
 
 from __future__ import annotations
@@ -33,7 +34,7 @@ MAX_FILE_SIZE = 256 * 1024
 MAX_PARAMS = 300
 
 # service id -> length of the whole request in hex digits (service + identifier)
-ALLOWED_SERVICES = {"01": 4, "22": 6}
+ALLOWED_SERVICES = {"01": 4, "21": 4, "22": 6}
 # Physical request addresses on 11 bit CAN: engine, transmission and the other emission related modules.
 # The adapter listens for 7E8-7EF by default, so these work without touching its receive filter.
 HEADERS = tuple(f"7E{n:X}" for n in range(8))
@@ -70,7 +71,7 @@ def check_request(request: str) -> str:
     service = text[:2]
     if service not in ALLOWED_SERVICES:
         raise PidSetError(f"Service {service} is not allowed (request {text}): only reading with "
-                          f"{' or '.join(sorted(ALLOWED_SERVICES))} is supported")
+                          f"{', '.join(sorted(ALLOWED_SERVICES))} is supported")
     if len(text) != ALLOWED_SERVICES[service]:
         raise PidSetError(f"Invalid request {text}: service {service} takes "
                           f"{(ALLOWED_SERVICES[service] - 2) // 2} identifier byte(s)")
@@ -82,6 +83,21 @@ def check_header(header: Optional[str]) -> str:
     if text not in HEADERS:
         raise PidSetError(f"Unsupported header {header!r}: use one of {HEADERS[0]}-{HEADERS[-1]}")
     return text
+
+
+def byte_index(name: str) -> int:
+    """Position of a formula letter in the data: A=0 ... Z=25, AA=26, AB=27 ... (as in Torque)."""
+    if len(name) == 1:
+        return ord(name) - ord("A")
+    return 26 + (ord(name[0]) - ord("A")) * 26 + (ord(name[1]) - ord("A"))
+
+
+def byte_name(index: int) -> str:
+    """Formula letter of a data byte: 0 -> A, 25 -> Z, 26 -> AA..."""
+    if index < 26:
+        return chr(ord("A") + index)
+    first, second = divmod(index - 26, 26)
+    return chr(ord("A") + first) + chr(ord("A") + second)
 
 
 def nrc_text(code: int) -> str:
@@ -154,9 +170,9 @@ class Formula:
             if isinstance(node.value, bool) or not isinstance(node.value, (int, float)):
                 self._fail("only numbers are allowed")
         elif isinstance(node, ast.Name):
-            if not re.fullmatch(r"[A-Z]", node.id):
-                self._fail(f"unknown name {node.id!r} (data bytes are A, B, C...)")
-            self.bytes_needed = max(self.bytes_needed, ord(node.id) - ord("A") + 1)
+            if not re.fullmatch(r"[A-Z]{1,2}", node.id):
+                self._fail(f"unknown name {node.id!r} (data bytes are A, B, C... Z, AA, AB...)")
+            self.bytes_needed = max(self.bytes_needed, byte_index(node.id) + 1)
         elif isinstance(node, ast.BinOp):
             if type(node.op) not in _BINARY:
                 self._fail(f"operator {type(node.op).__name__} is not allowed")
@@ -180,7 +196,7 @@ class Formula:
         if isinstance(node, ast.Constant):
             return node.value
         if isinstance(node, ast.Name):
-            return data[ord(node.id) - ord("A")]
+            return data[byte_index(node.id)]
         if isinstance(node, ast.BinOp):
             return _BINARY[type(node.op)](self._eval(node.left, data), self._eval(node.right, data))
         if isinstance(node, ast.UnaryOp):
@@ -205,7 +221,7 @@ class CustomParam:
     set_id: str
     name: str                    # key inside the set, e.g. "DPF_SOOT"
     label: str
-    request: str                 # "22XXXX" or "01XX"
+    request: str                 # "22XXXX", "21XX" or "01XX"
     header: str = DEFAULT_HEADER
     formula: Optional[Formula] = None
     map: dict[int, str] = field(default_factory=dict)   # value -> text, for states
@@ -249,6 +265,7 @@ class PidSet:
     name: str
     params: list[CustomParam]
     source: str = ""
+    license: str = ""            # license of the file when it differs from the program's (e.g. CC BY-SA 4.0)
     note: str = ""
     match: dict = field(default_factory=dict)       # wmi: [...], fuel: [...], years: [from, to], simulator: bool
     verified: list[dict] = field(default_factory=list)
@@ -276,7 +293,8 @@ class PidSet:
         return True
 
     def to_dict(self) -> dict:
-        return {"id": self.id, "name": self.name, "source": self.source, "note": self.note, "match": self.match,
+        return {"id": self.id, "name": self.name, "source": self.source, "license": self.license,
+                "note": self.note, "match": self.match,
                 "verified": self.verified, "builtin": self.builtin,
                 "params": [p.to_dict() for p in self.params]}
 
@@ -401,6 +419,7 @@ def parse_set(text: str, builtin: bool = False, path: str = "") -> PidSet:
     if not isinstance(verified, list) or not all(isinstance(v, dict) for v in verified):
         raise PidSetError("'verified' must be a list of [[verified]] tables")
     return PidSet(id=set_id, name=name, params=params, source=_text(data, "source", "Set", limit=400),
+                  license=_text(data, "license", "Set", limit=80),
                   note=_text(data, "note", "Set", limit=600), match=_parse_match(data.get("match", {})),
                   verified=[{k: str(v)[:120] for k, v in entry.items()} for entry in verified],
                   builtin=builtin, path=path)

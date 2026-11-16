@@ -104,6 +104,18 @@ alarm_high = 125
 status = "verified"
 
 [[params]]
+key = "MODULE_VOLTAGE"
+label = "Control module voltage (data block)"
+label_pl = "Napięcie sterownika (blok danych)"
+request = "2101"          # service 21: one long block with many values (Hyundai/Kia, Toyota...)
+formula = "AB/10"         # after Z the bytes are called AA, AB, AC...
+unit = "V"
+decimals = 1
+min = 10
+max = 16
+status = "verified"
+
+[[params]]
 key = "NOT_IN_THIS_CAR"
 label = "Example of a parameter the car does not have"
 label_pl = "Przykład parametru, którego auto nie ma"

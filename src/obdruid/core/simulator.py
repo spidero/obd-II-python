@@ -6,7 +6,8 @@ set-up as the test car. It answers AT commands, mode 01 (live data), 02 (freeze
 frame), 03/07/0A (stored, pending and permanent trouble codes), 04 (clear codes),
 06 (on-board monitor test results) and 09 02 (VIN). It also answers a few made-up
 manufacturer identifiers (service 22) - a particulate filter on the engine ECU and
-one value on a transmission module at 7E1 - for the built-in "simulator" PID set.
+one value on a transmission module at 7E1 - and one service 21 data block, for the
+built-in "simulator" PID set.
 
 Faults can be injected to see what a bad health check looks like, see FAULTS.
 
@@ -283,6 +284,8 @@ class Elm327Emulator:
             return ["NO DATA"]   # nobody listens at this address
         if mode == 0x22:
             return self._format(self._mode22(cmd, self._engine_dids()))
+        if mode == 0x21:
+            return self._format(self._mode21(cmd))
         if mode == 0x01 and len(cmd) == 4:
             data = self._mode01(int(cmd[2:4], 16))
         elif mode == 0x02 and len(cmd) == 6:
@@ -517,6 +520,16 @@ class Elm327Emulator:
 
     def _transmission_dids(self) -> dict[int, bytes]:
         return {0xDE01: bytes([int(78 + self.engine.noise(1) + 40)])}   # oil temperature, 78 °C
+
+    def _mode21(self, cmd: str) -> bytes:
+        """One long data block the way Hyundai/Kia and Toyota engine modules answer service 21."""
+        if len(cmd) != 4:
+            return bytes([0x7F, 0x21, 0x13])
+        if cmd[2:4] != "01":
+            return bytes([0x7F, 0x21, 0x31])
+        block = bytearray(32)
+        block[27] = int(round(self._voltage() * 10))     # byte AB: control module voltage, 0.1 V
+        return bytes([0x61, 0x01]) + bytes(block)
 
     def _mode22(self, cmd: str, dids: dict[int, bytes]) -> bytes:
         if len(cmd) != 6:

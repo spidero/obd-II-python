@@ -200,14 +200,14 @@ def pids(ctx: typer.Context):
 @app.command()
 def did(
     ctx: typer.Context,
-    request: str = typer.Argument(..., help="Request in hex: 22 + identifier (e.g. 22F190) or 01 + PID."),
+    request: str = typer.Argument(..., help="Request in hex: 22 + identifier (e.g. 22F190), 21 + local identifier or 01 + PID."),
     header: str = typer.Option("7E0", "--header", "-H", help="Module address: 7E0 engine, 7E1 transmission ... 7E7."),
 ):
-    """Read one manufacturer identifier (UDS service 22) and show the raw answer.
+    """Read one manufacturer identifier (service 22 or 21) and show the raw answer.
 
     For checking PID set definitions. Read only: other services are refused.
     """
-    from .core.custom_pids import nrc_text
+    from .core.custom_pids import byte_name, nrc_text
 
     try:
         with _open(ctx) as s:
@@ -218,7 +218,7 @@ def did(
         data = answer.data or b""
         console.print(f"[bold]{answer.request}[/] from {answer.header}: [bold cyan]{data.hex(' ').upper() or '(no data)'}[/]"
                       f"  ({len(data)} byte{'s' if len(data) != 1 else ''})")
-        letters = "  ".join(f"{chr(65 + n)}={b}" for n, b in enumerate(data[:26]))
+        letters = "  ".join(f"{byte_name(n)}={b}" for n, b in enumerate(data[:64]))
         if letters:
             console.print(f"Formula bytes: {letters}")
         if data and all(32 <= b < 127 for b in data):
