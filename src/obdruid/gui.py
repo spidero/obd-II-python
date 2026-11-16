@@ -27,8 +27,10 @@ def _start_server(settings: ConnectionSettings, port: int):
 
     from .web.server import create_app
 
-    config = uvicorn.Config(create_app(settings), host="127.0.0.1", port=port, log_level="warning")
+    app = create_app(settings)
+    config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning")
     server = uvicorn.Server(config)
+    server.obd_state = app.state.obd
     thread = threading.Thread(target=server.run, name="obd-web", daemon=True)
     thread.start()
     url = f"http://127.0.0.1:{port}/"
@@ -121,10 +123,29 @@ def run(settings: ConnectionSettings) -> None:
         thread.join(5)
         return
 
+    # No native window: the UI runs in the web browser. There may be no terminal to press Ctrl+C in
+    # (started from the desktop menu, the AppImage or the Windows exe), so quit when the tab is gone.
     webbrowser.open(url)
-    print(f"OBDruid: {url}  (Ctrl+C to quit)")
+    print(f"OBDruid: {url}  (Ctrl+C to quit; quits by itself after the browser tab is closed)")
+    started = time.monotonic()
     try:
         while thread.is_alive():
             thread.join(0.5)
+            if _abandoned(server.obd_state.last_seen, started, time.monotonic()):
+                print("No browser tab is using OBDruid any more - quitting.")
+                server.should_exit = True
+                thread.join(5)
+                break
     except KeyboardInterrupt:
         server.should_exit = True
+
+
+# The page asks for the state every 3 s; browsers slow timers of hidden tabs down to one per minute.
+IDLE_QUIT = 180.0      # s without any request after the UI was used
+NEVER_OPENED = 600.0   # s without a single request (the browser did not open)
+
+
+def _abandoned(last_seen: float | None, started: float, now: float) -> bool:
+    if last_seen is None:
+        return now - started > NEVER_OPENED
+    return now - last_seen > IDLE_QUIT

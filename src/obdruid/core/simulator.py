@@ -1,4 +1,7 @@
-"""ELM327 emulator on a pseudo terminal, so the whole stack runs without a car.
+"""ELM327 emulator, so the whole stack runs without a car.
+
+It listens on a pseudo terminal (Linux/macOS) or, where there is none (Windows), on a local
+TCP port that python-OBD opens as ``socket://127.0.0.1:PORT`` - the same way as a Wi-Fi adapter.
 
 The emulator mimics a vLinker FS (ELM327 v2.3) connected to a petrol car on
 ISO 15765-4 CAN 11 bit / 500 kbit with a single engine ECU at 7E8 - the same
@@ -10,8 +13,6 @@ one value on a transmission module at 7E1 - and one service 21 data block, for t
 built-in "simulator" PID set.
 
 Faults can be injected to see what a bad health check looks like, see FAULTS.
-
-Linux/macOS only (uses os.openpty).
 """
 
 from __future__ import annotations
@@ -20,9 +21,9 @@ import math
 import os
 import random
 import select
+import socket
 import threading
 import time
-import tty
 
 from . import dtc as dtc_codes
 
@@ -115,11 +116,17 @@ class EngineModel:
         return self.rpm * self.map_kpa / 9000 + self.noise(0.05)
 
 
+def default_transport() -> str:
+    """A pseudo terminal where the system has one, a local TCP port otherwise (Windows)."""
+    return "pty" if hasattr(os, "openpty") and os.name != "nt" else "tcp"
+
+
 class Elm327Emulator:
     """Threaded ELM327 emulator bound to a pseudo terminal."""
 
     def __init__(self, stored_dtcs=("P0133", "P0420"), pending_dtcs=("P0171",),
-                 vin="SIM1234567890ABCD", seed: int | None = None, faults=(), warm: bool = True):
+                 vin="SIM1234567890ABCD", seed: int | None = None, faults=(), warm: bool = True,
+                 transport: str | None = None):
         unknown = set(faults) - set(FAULTS)
         if unknown:
             raise ValueError(f"Unknown simulator fault(s): {', '.join(sorted(unknown))}")
@@ -141,9 +148,24 @@ class Elm327Emulator:
             self.cleared_at = time.monotonic() + 3600  # monitors stay incomplete
         self.commands_seen: list[str] = []
         self._reset()
-        self._master, self._slave = os.openpty()
-        tty.setraw(self._slave)
-        self.port = os.ttyname(self._slave)
+        # "pty" or "tcp"; OBDRUID_SIM_TRANSPORT forces one (the tests use it to cover the Windows path on Linux)
+        self.transport = transport or os.environ.get("OBDRUID_SIM_TRANSPORT") or default_transport()
+        if self.transport not in ("pty", "tcp"):
+            raise ValueError(f"Unknown simulator transport: {self.transport}")
+        self._master = self._slave = None
+        self._listener: socket.socket | None = None
+        self._client: socket.socket | None = None
+        if self.transport == "pty":
+            import tty
+
+            self._master, self._slave = os.openpty()
+            tty.setraw(self._slave)
+            self.port = os.ttyname(self._slave)
+        else:
+            self._listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self._listener.bind(("127.0.0.1", 0))
+            self._listener.listen(1)
+            self.port = f"socket://127.0.0.1:{self._listener.getsockname()[1]}"
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, name="elm327-emulator", daemon=True)
 
@@ -156,10 +178,18 @@ class Elm327Emulator:
         self._stop.set()
         self._thread.join(timeout=2)
         for fd in (self._master, self._slave):
+            if fd is None:
+                continue
             try:
                 os.close(fd)
             except OSError:
                 pass
+        for sock in (self._client, self._listener):
+            if sock is not None:
+                try:
+                    sock.close()
+                except OSError:
+                    pass
 
     def __enter__(self):
         return self.start()
@@ -180,6 +210,9 @@ class Elm327Emulator:
 
     # ------------------------------------------------------------------ io loop
     def _run(self) -> None:
+        if self.transport == "tcp":
+            self._run_tcp()
+            return
         buf = b""
         while not self._stop.is_set():
             try:
@@ -194,14 +227,52 @@ class Elm327Emulator:
                 return
             if not chunk:
                 return
-            buf += chunk
-            while b"\r" in buf:
-                line, buf = buf.split(b"\r", 1)
-                self._handle(line.decode(errors="replace"))
+            buf = self._feed(buf + chunk)
+
+    def _run_tcp(self) -> None:
+        """Serve one client at a time; a new connection (reconnect) replaces the previous one."""
+        buf = b""
+        while not self._stop.is_set():
+            watched = [s for s in (self._listener, self._client) if s is not None]
+            try:
+                ready, _, _ = select.select(watched, [], [], 0.1)
+            except (OSError, ValueError):
+                return
+            for sock in ready:
+                if sock is self._listener:
+                    try:
+                        client, _ = self._listener.accept()
+                    except OSError:
+                        return
+                    if self._client is not None:
+                        self._client.close()
+                    client.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                    self._client, buf = client, b""
+                    continue
+                try:
+                    chunk = sock.recv(1024)
+                except OSError:
+                    chunk = b""
+                if not chunk:          # the client went away: wait for the next one
+                    sock.close()
+                    if sock is self._client:
+                        self._client = None
+                    continue
+                buf = self._feed(buf + chunk)
+
+    def _feed(self, buf: bytes) -> bytes:
+        while b"\r" in buf:
+            line, buf = buf.split(b"\r", 1)
+            self._handle(line.decode(errors="replace"))
+        return buf
 
     def _write(self, text: str) -> None:
         try:
-            os.write(self._master, text.encode())
+            if self.transport == "tcp":
+                if self._client is not None:
+                    self._client.sendall(text.encode())
+            else:
+                os.write(self._master, text.encode())
         except OSError:
             pass
 

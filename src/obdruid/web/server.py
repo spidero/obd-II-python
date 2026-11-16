@@ -62,6 +62,7 @@ class AppState:
         self._lock = threading.Lock()
         self.last_report: Optional[HealthReport] = None
         self.health_running = False
+        self.last_seen: Optional[float] = None   # monotonic time of the last request (see gui.run)
         self.pid_probe: Dict[str, str] = {}   # manufacturer parameters: key -> probe result for the connected car
 
     def connect(self, settings: Optional[ConnectionSettings] = None) -> None:
@@ -238,6 +239,7 @@ def create_app(settings: Optional[ConnectionSettings] = None, connect: bool = Tr
 
     app = FastAPI(title="OBDruid", version=__version__, lifespan=lifespan)
     app.state.obd = state
+    app.add_middleware(_Activity, state=state)
 
     def guarded(fn, *args):
         session = state.check()
@@ -701,6 +703,18 @@ def create_app(settings: Optional[ConnectionSettings] = None, connect: bool = Tr
 
 
 mimetypes.add_type("application/manifest+json", ".webmanifest")
+
+
+class _Activity:
+    """Notes when a client last talked to the server, so the desktop app can quit after its tab is closed."""
+
+    def __init__(self, app, state: AppState):
+        self.app, self.state = app, state
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] in ("http", "websocket"):
+            self.state.last_seen = time.monotonic()
+        await self.app(scope, receive, send)
 
 
 class NoCacheStaticFiles(StaticFiles):

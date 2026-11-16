@@ -14,6 +14,7 @@ from obdruid.core import ConnectionSettings, ObdSession, transports
 from obdruid.core.simulator import Elm327Emulator
 from obdruid.core.transports import protocol_ble, protocol_rfcomm
 from obdruid.core.transports._base import StreamSerial
+from simlink import SimLink
 
 
 # ---------------------------------------------------------------- helpers
@@ -22,30 +23,41 @@ class PtyBridge:
 
     def __init__(self):
         self.emu = Elm327Emulator(stored_dtcs=("P0133",), pending_dtcs=()).start()
-        self.fd = os.open(self.emu.port, os.O_RDWR | os.O_NOCTTY)
+        self.link = SimLink(self.emu)
         self.out = queue.Queue()
         self.alive = True
         threading.Thread(target=self._pump, daemon=True).start()
 
     def _pump(self):
         while self.alive:
-            try:
-                data = os.read(self.fd, 256)
-            except OSError:
-                break
+            data = self.link.read(256, timeout=0.5)
             if data:
                 self.out.put(data)
 
     def write(self, data):
-        os.write(self.fd, data)
+        self.link.write(data)
 
     def close(self):
         self.alive = False
         self.emu.stop()
-        try:
-            os.close(self.fd)
-        except OSError:
-            pass
+        self.link.close()
+
+
+class FakeSocketModule:
+    """The socket module as protocol_rfcomm sees it: Bluetooth constants and a fake socket class.
+    Only that module is patched - the simulator may need real sockets at the same time (TCP transport)."""
+
+    AF_BLUETOOTH, BTPROTO_RFCOMM = 31, 3
+
+    def __init__(self, socket_class):
+        self.socket = socket_class
+
+    def __getattr__(self, name):
+        return getattr(socket, name)
+
+
+def fake_bluetooth(monkeypatch, socket_class):
+    monkeypatch.setattr(protocol_rfcomm, "socket", FakeSocketModule(socket_class))
 
 
 class FakeRfcommSocket:
@@ -198,9 +210,7 @@ def test_stream_serial_timeouts_and_loss():
 
 # ---------------------------------------------------------------- full program over the fake links
 def test_session_over_rfcomm(monkeypatch):
-    monkeypatch.setattr(protocol_rfcomm.socket, "AF_BLUETOOTH", 31, raising=False)
-    monkeypatch.setattr(protocol_rfcomm.socket, "BTPROTO_RFCOMM", 3, raising=False)
-    monkeypatch.setattr(protocol_rfcomm.socket, "socket", FakeRfcommSocket)
+    fake_bluetooth(monkeypatch, FakeRfcommSocket)
     with ObdSession(ConnectionSettings(port="rfcomm://01:23:45:67:89:BA")) as s:
         assert s.connected
         rpm = {r.key: r.value for r in s.read(["RPM", "COOLANT_TEMP"])}
@@ -222,9 +232,7 @@ def test_unreachable_adapter_message(monkeypatch):
         def connect(self, addr):
             raise OSError(113, "No route to host")
 
-    monkeypatch.setattr(protocol_rfcomm.socket, "AF_BLUETOOTH", 31, raising=False)
-    monkeypatch.setattr(protocol_rfcomm.socket, "BTPROTO_RFCOMM", 3, raising=False)
-    monkeypatch.setattr(protocol_rfcomm.socket, "socket", Refuse)
+    fake_bluetooth(monkeypatch, Refuse)
     transports.register()
     import serial
     with pytest.raises(SerialException, match="No route to host"):

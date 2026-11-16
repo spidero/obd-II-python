@@ -1,0 +1,4 @@
+#!/bin/sh
+# AppImage entry: no arguments = the desktop app (opens the web browser), with arguments = the obdruid command.
+HERE="$(dirname "$(readlink -f "$0")")"
+exec "$HERE/usr/lib/obdruid/obdruid" "$@"
