@@ -138,8 +138,12 @@ need no Python and no installation:
   code-signed yet, so SmartScreen may say *Windows protected your PC* – choose *More info → Run anyway*.
   `obdruid-cli.exe` in the same folder is the command line tool: `obdruid-cli.exe --sim info`.
   A USB adapter shows up as a COM port (`obdruid-cli.exe ports`); data is kept in `%APPDATA%\OBDruid`.
-- **Linux AppImage:** started without arguments it opens the interface in your web browser and quits
-  by itself a few minutes after you close the tab. With arguments it is the `obdruid` command:
+- **Linux AppImage:** started without arguments it opens the interface in a window, using what your
+  system already has (the AppImage itself stays small): GTK with WebKit of the system Python
+  (`python3-gi`, `gir1.2-webkit2-4.1` – often there on GNOME desktops), otherwise Chrome, Chromium, Edge,
+  Brave or Vivaldi as an app window, otherwise a tab of your default browser (the program then quits by
+  itself a few minutes after you close the tab). `OBDRUID_WINDOW=gtk|chromium|browser` picks one.
+  With arguments it is the `obdruid` command:
   `./OBDruid-*.AppImage --sim info`, `./OBDruid-*.AppImage web --host 0.0.0.0`.
   No FUSE on your system? Add `--appimage-extract-and-run` as the first argument.
   Serial adapters need access to the port: `sudo usermod -aG dialout $USER`, then log in again.
@@ -153,7 +157,7 @@ From a release (no git needed) – download the wheel from the
 [latest release](https://github.com/spidero/obdruid/releases/latest) and install it with pipx:
 
 ```bash
-pipx install --system-site-packages "obdruid-0.6.0-py3-none-any.whl[gui]"   # or [web] without the window
+pipx install --system-site-packages "obdruid-0.6.1-py3-none-any.whl[gui]"   # or [web] without the window
 ```
 
 From source:
