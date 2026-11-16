@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.1 – 2026-11-16
+
+### Added
+- **A window for the Linux AppImage without making it bigger:** it uses what the system has – GTK with WebKit
+  of the system Python, or Chrome / Chromium / Edge / Brave / Vivaldi as an app window (no tabs, no address bar),
+  and only then a browser tab. The program quits when the window is closed. `OBDRUID_WINDOW=gtk|chromium|browser`
+  chooses one. Also used by `obdruid gui` when pywebview is not installed.
+
+### Fixed
+- The AppImage starts the system browser with a clean environment (the libraries of the build are not passed on).
+
 ## 0.6.0 – 2026-11-16
 
 Manufacturer parameters and ready-to-run builds for Windows and Linux.
@@ -29,7 +40,6 @@ Manufacturer parameters and ready-to-run builds for Windows and Linux.
 - Manufacturer parameter sets for real cars are unverified candidates – confirm the values before relying on them.
 - The Windows build was tested by CI against the simulator only; a real adapter on a COM port and the window
   (WebView2) still need a test on a real PC. The builds are not code-signed (SmartScreen warning).
-- The Linux AppImage opens the interface in the web browser (no native window).
 
 ## 0.5.0 – 2026-11-15
 

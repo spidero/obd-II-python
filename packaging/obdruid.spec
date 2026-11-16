@@ -15,6 +15,8 @@ WINDOWS = sys.platform == "win32"
 datas = collect_data_files("obdruid")             # web UI, trouble code texts, PID sets
 datas += collect_data_files("pint")               # unit definitions used by python-OBD
 datas += [(str(ROOT / "LICENSE"), ".")]
+# run by the system Python for a GTK window (system_window.py), so it must exist as a file, not only in the archive
+datas += [(str(ROOT / "src" / "obdruid" / "gtk_window.py"), "obdruid")]
 
 hidden = collect_submodules("obdruid")            # transports are found by name at run time
 hidden += collect_submodules("serial")            # pyserial URL handlers (socket://) and port listing
