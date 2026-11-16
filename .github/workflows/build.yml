@@ -1,7 +1,7 @@
 name: Build
 
 # Standalone builds for people without Python: a Windows zip and Linux AppImages.
-# Runs by hand, on pull requests that touch the packaging, and when a GitHub release is published
+# Runs by hand, on pull requests that touch the code or the packaging, and when a GitHub release is published
 # (then the files are attached to the release).
 on:
   workflow_dispatch:
@@ -10,6 +10,7 @@ on:
   pull_request:
     paths:
       - "packaging/**"
+      - "src/**"
       - ".github/workflows/build.yml"
       - "pyproject.toml"
 

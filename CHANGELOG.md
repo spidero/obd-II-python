@@ -11,6 +11,12 @@
 - First sets for real cars: **Ford diesel – particulate filter** and **Hyundai i30 (2007–2012) petrol – engine**, candidates converted from OBDb (CC BY-SA 4.0),
   marked unverified until confirmed on a car. Service 21 data blocks (Hyundai/Kia, Toyota) can be read too.
 
+- **Ready-to-run builds without Python:** a Windows zip (`OBDruid.exe` + `obdruid-cli.exe`) and Linux AppImages
+  for x86_64 and aarch64, built and smoke-tested by CI and attached to every release.
+- Windows support in the core: the simulator works without a pseudo terminal, data lives in `%APPDATA%\OBDruid`,
+  the test suite also runs on Windows.
+- The desktop app quits by itself when it runs in the browser and its tab is closed.
+
 ### Changed
 - Python 3.11 or newer is required (3.10 reached its end of life); CI runs on 3.11–3.14.
 
