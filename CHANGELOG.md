@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **Cars without a VIN are recognised by their fingerprint** (protocol, answering modules, supported PIDs), not
+  only by the adapter: two such cars on one adapter keep their own profiles, history and PID sets.
+- **Particulate filter in the health check:** soot load, distance since the last regeneration and a running
+  regeneration, from manufacturer parameters marked with a `role` in their PID set (the Ford set and the
+  simulator's demo set have them). Try it: `obdruid --sim --sim-fault dpf_full health`.
+
+### Fixed
+- The command line ends quietly when the reader of its output goes away (`| more`, `| head`); on Windows it
+  crashed with `OSError: [Errno 22]`.
+
 ## 0.7.0 – 2026-11-16
 
 Manufacturer parameters for more makes.

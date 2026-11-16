@@ -15,7 +15,7 @@ import obd
 from obd import OBDStatus
 
 from . import dtc as dtc_codes
-from . import custom_pids, diag, transports
+from . import custom_pids, diag, transports, vehicle_id
 from .custom_pids import CustomParam, PidSetError
 from .models import (AdapterInfo, Dtc, DtcReport, FreezeFrame, MonitorReport, Param, Reading, ReadinessTest,
                      VehicleStatus)
@@ -281,6 +281,27 @@ class ObdSession:
                 value = value.decode(errors="ignore")
             vin = str(value).strip().strip("\x00").strip()
             return vin or None
+
+    def identify(self) -> tuple[str | None, dict | None]:
+        """(VIN, fingerprint): the fingerprint is only worked out when there is no VIN to go by."""
+        vin = self.vin()
+        return vin, (None if vin else self.fingerprint())
+
+    def fingerprint(self) -> dict | None:
+        """What tells this car apart when it reports no VIN: protocol, the modules that answer and the
+        standard PIDs it supports. Stable between connections; compare with `vehicle_id.same_car`."""
+        with self._lock:
+            conn = self._require()
+            pids = sorted({c.pid for c in conn.supported_commands if c.mode == 1 and c.pid})
+            cmd = obd.OBDCommand("RAW_0100_ECUS", "modules answering 0100", b"0100", 0,
+                                 lambda messages: sorted({f"{m.frames[0].tx_id:02X}" for m in messages
+                                                          if m.frames and m.frames[0].tx_id is not None}),
+                                 obd.ECU.ALL, False)
+            try:
+                ecus = self._query(cmd, force=True).value or []
+            except (TypeError, ValueError, AttributeError):  # an odd answer must not stop the connection
+                ecus = []
+            return vehicle_id.make_fingerprint(conn.protocol_id(), ecus, pids)
 
     def status(self) -> VehicleStatus:
         with self._lock:

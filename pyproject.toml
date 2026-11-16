@@ -35,8 +35,8 @@ dev = [
 ]
 
 [project.scripts]
-obdruid = "obdruid.cli:app"
-obd-tool = "obdruid.cli:app"  # old command name, kept for existing installs
+obdruid = "obdruid.cli:run"
+obd-tool = "obdruid.cli:run"  # old command name, kept for existing installs
 
 [tool.setuptools.packages.find]
 where = ["src"]

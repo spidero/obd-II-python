@@ -75,3 +75,13 @@ def test_dtc_read_and_clear(session):
     status = session.status()
     assert not status.mil
     assert any(not t.complete for t in status.readiness)  # monitors reset after clearing
+
+
+def test_fingerprint_of_the_simulator(session):
+    from obdruid.core.vehicle_id import same_car
+
+    vin, none = session.identify()
+    assert vin and none is None                       # with a VIN no fingerprint is worked out
+    first, second = session.fingerprint(), session.fingerprint()
+    assert first["protocol"] == "6" and first["ecus"] and int(first["pids"], 16)
+    assert same_car(first, second) is True

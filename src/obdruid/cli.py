@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import json
 import logging
+import os
 import sys
 import time
 from datetime import datetime
@@ -78,7 +79,9 @@ def _select_vehicle(session: ObdSession):
     """Activate the profile of the connected car (the simulator has its own). None if storage fails."""
     try:
         storage = _storage()
-        vehicle = storage.select_for_vin(session.vin(), simulated=session.simulated)
+        vin, fingerprint = session.identify()
+        vehicle = storage.select_for_vin(vin, simulated=session.simulated,
+                                         port=session.settings.port, fingerprint=fingerprint)
     except (OSError, ObdError):
         return None
     try:
@@ -443,7 +446,8 @@ def clear(
 
             try:
                 storage = _storage()
-                storage.select_for_vin(s.vin(), simulated=s.simulated)
+                vin, fingerprint = s.identify()
+                storage.select_for_vin(vin, simulated=s.simulated, port=s.settings.port, fingerprint=fingerprint)
                 backup = backup_before_clear(s, storage)
                 if backup:
                     console.print(f"Backup saved: {storage.record_path(storage.active()['id'], backup['id'])}")
@@ -493,13 +497,12 @@ def health(
     except ObdError as e:
         _fail(e)
     try:
+        _select_vehicle(session)   # before the check: the car's manufacturer parameters (e.g. DPF) take part
         with Progress(TextColumn("{task.description}"), BarColumn(), TimeRemainingColumn(),
                       console=err, transient=True, disable=json_out) as bar:
             task = bar.add_task("Starting", total=1.0)
             report = run_check(session, duration,
                                lambda f, msg: bar.update(task, completed=f, description=msg))
-        if save:
-            _select_vehicle(session)
     except ObdError as e:
         _fail(e)
     finally:
@@ -700,5 +703,53 @@ def gui(
     run(_settings(ctx))
 
 
+class _OutputClosed(BaseException):
+    """Writing to stdout failed: whoever read the output went away (`| more`, `| head`, `grep -q`).
+    A BaseException, so that neither Click nor Typer turns it into an error message on the way out."""
+
+
+class _GuardedOutput:
+    """stdout that reports a failed write as _OutputClosed. Linux says EPIPE, Windows EINVAL - and
+    Windows does not fail a second time, so the failure has to be caught where it happens."""
+
+    def __init__(self, stream):
+        self._stream = stream
+
+    def write(self, text):
+        try:
+            return self._stream.write(text)
+        except OSError as e:
+            raise _OutputClosed() from e
+
+    def flush(self):
+        try:
+            return self._stream.flush()
+        except OSError as e:
+            raise _OutputClosed() from e
+
+    def __getattr__(self, name):
+        return getattr(self._stream, name)
+
+
+def run() -> None:
+    """The `obdruid` command: the Typer app, ending quietly when whoever reads the output stops reading."""
+    stdout = sys.stdout
+    if stdout is not None and not isinstance(stdout, _GuardedOutput):
+        sys.stdout = _GuardedOutput(stdout)
+    try:
+        app()
+    except _OutputClosed:
+        # nothing more can be shown; point stdout at nothing so the final flush does not fail again
+        try:
+            os.dup2(os.open(os.devnull, os.O_WRONLY), stdout.fileno())
+        except (OSError, ValueError, AttributeError):
+            pass
+        sys.stdout = stdout
+        sys.exit(1)
+    finally:
+        if isinstance(sys.stdout, _GuardedOutput):
+            sys.stdout = stdout
+
+
 if __name__ == "__main__":  # pragma: no cover
-    app()
+    run()

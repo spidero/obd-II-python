@@ -41,6 +41,9 @@ HEADERS = tuple(f"7E{n:X}" for n in range(8))
 DEFAULT_HEADER = "7E0"
 
 STATUSES = ("verified", "unverified")
+# what a parameter means, for the health check (any make): soot load in %, km since the last
+# regeneration, regeneration running (a number > 0 or a state "active"/"on"/"yes")
+ROLES = ("dpf_soot", "dpf_distance", "dpf_regen")
 TILE_FIELDS = ("min", "max", "warn_low", "warn_high", "alarm_low", "alarm_high")
 
 # UDS negative response codes worth explaining
@@ -233,6 +236,7 @@ class CustomParam:
     tile: dict = field(default_factory=dict)             # gauge range and alert limits
     status: str = "unverified"
     note: str = ""
+    role: str = ""               # one of ROLES or empty
 
     @property
     def key(self) -> str:
@@ -256,7 +260,7 @@ class CustomParam:
         return {"key": self.key, "name": self.name, "label": self.label, "label_pl": self.label_pl,
                 "request": self.request, "header": self.header, "formula": self.formula.text if self.formula else "",
                 "map": {str(k): v for k, v in self.map.items()}, "unit": self.unit, "group": self.group,
-                "interval": self.interval, "status": self.status, "note": self.note}
+                "interval": self.interval, "status": self.status, "note": self.note, "role": self.role}
 
 
 @dataclass
@@ -358,12 +362,16 @@ def _parse_param(set_id: str, raw: Any, n: int) -> CustomParam:
     if not 0 <= interval <= 3600:
         raise PidSetError(f"{where}: 'interval' must be between 0 and 3600 seconds")
     tile = {k: _number(raw, k, where) for k in TILE_FIELDS if raw.get(k) is not None}
+    role = _text(raw, "role", where)
+    if role and role not in ROLES:
+        raise PidSetError(f"{where}: 'role' must be one of {', '.join(ROLES)}")
 
     return CustomParam(
         set_id=set_id, name=name, label=_text(raw, "label", where, required=True, limit=80), request=request,
         header=header, formula=formula, map=mapping, label_pl=_text(raw, "label_pl", where, limit=80),
         unit="" if mapping else _text(raw, "unit", where, limit=16), group=_text(raw, "group", where, limit=40),
-        decimals=decimals, interval=float(interval), tile=tile, status=status, note=_text(raw, "note", where, limit=400))
+        decimals=decimals, interval=float(interval), tile=tile, status=status, note=_text(raw, "note", where, limit=400),
+        role=role)
 
 
 def _parse_match(raw: Any) -> dict:
