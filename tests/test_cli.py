@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from typer.testing import CliRunner
 
 from obdruid.cli import app
@@ -65,3 +67,34 @@ def test_live_csv(tmp_path):
 def test_bad_port():
     r = runner.invoke(app, ["--port", "/dev/does-not-exist", "info"])
     assert r.exit_code == 2
+
+
+def test_closed_output_ends_quietly():
+    """`obdruid pids | head -1`: the reader goes away; no traceback, just a quiet stop."""
+    import subprocess
+    import sys
+
+    code = ("import sys, obdruid.cli as c\n"
+            "def big():\n"
+            "    for i in range(200000): print('line', i)\n"
+            "c.app = big\n"
+            "c.run()\n")
+    proc = subprocess.Popen([sys.executable, "-c", code], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    proc.stdout.read(1)
+    proc.stdout.close()                       # the reader stops, like head or grep -q
+    stderr = proc.stderr.read().decode(errors="replace")
+    assert proc.wait(timeout=60) == 1
+    assert "Traceback" not in stderr and "Exception ignored" not in stderr
+
+
+def test_other_os_errors_are_not_hidden(monkeypatch):
+    import errno as errno_module
+
+    from obdruid import cli
+
+    def failing():
+        raise OSError(errno_module.ENOENT, "no such port")
+
+    monkeypatch.setattr(cli, "app", failing)
+    with pytest.raises(OSError):
+        cli.run()

@@ -29,9 +29,9 @@ def _log_when_there_is_no_console() -> None:
 def main() -> None:
     _log_when_there_is_no_console()
     if len(sys.argv) > 1:
-        from .cli import app
+        from .cli import run as run_cli
 
-        app()
+        run_cli()
         return
     from .core import ConnectionSettings
     from .gui import run

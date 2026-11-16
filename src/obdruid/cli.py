@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import csv
+import errno
 import json
 import logging
+import os
 import sys
 import time
 from datetime import datetime
@@ -700,5 +702,34 @@ def gui(
     run(_settings(ctx))
 
 
+def _output_closed(error: OSError) -> bool:
+    """True when the error comes from writing to a reader that went away (`| more`, `| head`, `grep -q`).
+    Linux reports EPIPE; Windows reports EINVAL for the same thing."""
+    if isinstance(error, BrokenPipeError):
+        return True
+    if error.errno not in (errno.EPIPE, errno.EINVAL):
+        return False
+    try:
+        sys.stdout.flush()
+    except OSError:
+        return True
+    return False
+
+
+def run() -> None:
+    """The `obdruid` command: the Typer app, ending quietly when whoever reads the output stops reading."""
+    try:
+        app()
+    except OSError as e:
+        if not _output_closed(e):
+            raise
+        # nothing more can be shown; point stdout at nothing so the final flush does not fail again
+        try:
+            os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+        except (OSError, ValueError, AttributeError):
+            pass
+        sys.exit(1)
+
+
 if __name__ == "__main__":  # pragma: no cover
-    app()
+    run()
