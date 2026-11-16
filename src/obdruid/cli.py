@@ -498,13 +498,12 @@ def health(
     except ObdError as e:
         _fail(e)
     try:
+        _select_vehicle(session)   # before the check: the car's manufacturer parameters (e.g. DPF) take part
         with Progress(TextColumn("{task.description}"), BarColumn(), TimeRemainingColumn(),
                       console=err, transient=True, disable=json_out) as bar:
             task = bar.add_task("Starting", total=1.0)
             report = run_check(session, duration,
                                lambda f, msg: bar.update(task, completed=f, description=msg))
-        if save:
-            _select_vehicle(session)
     except ObdError as e:
         _fail(e)
     finally:

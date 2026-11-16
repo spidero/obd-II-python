@@ -376,11 +376,15 @@ max = 120
 warn_high = 80
 alarm_high = 95
 status = "unverified"            # or "verified" once checked on a real car
+role = "dpf_soot"                # optional: what the value means for the health check
 ```
 
 Formulas use the same letters as Torque's custom PIDs: numbers, `+ - * / // %`, brackets, bit
 operations (`& | ^ << >>`) and `signed(A)`, `signed(A,B)`, `bit(A,n)`, `abs()`, `min()`, `max()`.
-A state instead of a number: `map = { 0 = "idle", 1 = "active" }`. Several parameters may share one
+A state instead of a number: `map = { 0 = "idle", 1 = "active" }`. With a `role` – `dpf_soot` (soot
+load in %), `dpf_distance` (km since the last regeneration) or `dpf_regen` (regeneration running) – the
+health check also judges the particulate filter: filling up from 80 %, full from 100 %, a long distance
+without a regeneration, a regeneration in progress (indicative limits). Several parameters may share one
 identifier (different bytes or bits) – it is asked for only once per read.
 
 `obdruid did 22XXXX [--header 7E1]` (or `obdruid did 21XX`) shows the raw bytes of one identifier, with the letters the

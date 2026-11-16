@@ -177,3 +177,56 @@ def test_web_health():
         assert c.get("/api/health/last").json()["score"] == messages[-1]["report"]["score"]
         html = c.get("/api/health/report.html?download=1")
         assert html.status_code == 200 and "attachment" in html.headers["content-disposition"]
+
+
+DPF_ROLES = {"dpf_soot": {"key": "X_T_SOOT", "label": "Soot", "status": "verified"},
+             "dpf_distance": {"key": "X_T_DIST", "label": "Distance", "status": "verified"},
+             "dpf_regen": {"key": "X_T_REGEN", "label": "Regeneration", "status": "verified"}}
+
+
+def dpf_snapshot(samples, roles=DPF_ROLES, unverified=False):
+    snap = snapshot(samples)
+    snap.roles = {r: dict(v, status="unverified" if unverified else "verified") for r, v in roles.items()}
+    return snap
+
+
+def test_particulate_filter_rules():
+    assert not [f for f in evaluate(snapshot()).findings if f.area == "Particulate filter"]   # no DPF data: no rule
+
+    def dpf(report):
+        return {f.key: f for f in report.findings if f.area == "Particulate filter"}
+
+    ok = dpf(evaluate(dpf_snapshot({"X_T_SOOT": [30] * 8, "X_T_DIST": [250] * 8, "X_T_REGEN": [0] * 8})))
+    assert ok["dpf_soot"].severity == "ok" and "dpf_distance" not in ok and "dpf_regen" not in ok
+
+    filling = evaluate(dpf_snapshot({"X_T_SOOT": [85] * 8, "X_T_DIST": [1400] * 8}))
+    assert dpf(filling)["dpf_soot"].severity == "warn" and dpf(filling)["dpf_distance"].severity == "warn"
+    assert filling.score <= 84
+
+    full = evaluate(dpf_snapshot({"X_T_SOOT": [96, 101] + [104] * 6, "X_T_REGEN": [0, 0, 1, 1]}))
+    assert dpf(full)["dpf_soot"].severity == "critical" and dpf(full)["dpf_soot"].value == "104 %"
+    assert dpf(full)["dpf_regen"].severity == "info" and full.score <= 59
+
+    only_distance = dpf(evaluate(dpf_snapshot({"X_T_DIST": [300] * 8}, roles={"dpf_distance": DPF_ROLES["dpf_distance"]})))
+    assert only_distance["dpf_distance"].severity == "ok"
+    silent = dpf(evaluate(dpf_snapshot({})))
+    assert silent["dpf"].severity == "skipped"
+    unverified = dpf(evaluate(dpf_snapshot({"X_T_SOOT": [30] * 8}, unverified=True)))
+    assert unverified["dpf_unverified"].severity == "info"
+
+
+def test_particulate_filter_in_the_simulator():
+    """The simulator's demo set has roles: a full filter shows up in the health check."""
+    from obdruid.core import custom_pids
+    from obdruid.core.health import run_check
+
+    s = ObdSession(ConnectionSettings(simulate=True, sim_faults=("dpf_full", "dpf_regen")))
+    s.connect()
+    try:
+        sim = next(x for x in custom_pids.load_sets(None)[0] if x.id == "simulator")
+        s.set_custom_params(sim.params)
+        report = run_check(s, 2)
+    finally:
+        s.close()
+    found = {f.key: f for f in report.findings if f.area == "Particulate filter"}
+    assert found["dpf_soot"].severity in ("warn", "critical") and "dpf_regen" in found

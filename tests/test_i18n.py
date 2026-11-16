@@ -16,7 +16,7 @@ from obdruid.core.report_html import render_html
 from obdruid.core.trip import GROUP, TRIP_PARAMS
 from obdruid.i18n import finding_text, tr
 from obdruid.web.server import create_app
-from test_health import snapshot
+from test_health import DPF_ROLES, dpf_snapshot, snapshot
 
 PL = json.loads((STATIC / "pl.json").read_text(encoding="utf-8"))
 STRINGS = PL["strings"]
@@ -90,6 +90,10 @@ def _all_findings():
         cases.append(snapshot({"SHORT_FUEL_TRIM_1": [st] * 8, "LONG_FUEL_TRIM_1": [lt] * 8}))
     cases.append(snapshot())
     cases[-1].monitors = MonitorReport(supported=False)
+    cases += [dpf_snapshot({"X_T_SOOT": [soot] * 8, "X_T_DIST": [dist] * 8, "X_T_REGEN": [1] * 8}, unverified=True)
+              for soot, dist in ((30, 300), (85, 1500), (110, 1500))]
+    cases += [dpf_snapshot({"X_T_DIST": [300] * 8}, roles={"dpf_distance": DPF_ROLES["dpf_distance"]}),
+              dpf_snapshot({})]
     findings = [f for case in cases for f in evaluate(case).findings]
     for faults, codes in ((("rough_idle",), True), ((), False)):
         s = ObdSession(ConnectionSettings(simulate=True, sim_faults=faults, sim_codes=codes))

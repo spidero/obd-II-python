@@ -34,6 +34,7 @@ min = 0
 max = 150
 warn_high = 90
 alarm_high = 120
+role = "dpf_soot"
 
 [[params]]
 key = "DPF_SOOT_V2"
@@ -54,6 +55,7 @@ request = "220434"
 formula = "(A*65536+B*256+C)*0.38624256"   # source: raw * 6/25 miles
 unit = "km"
 interval = 30
+role = "dpf_distance"
 note = "The source gives miles (raw x 6/25); converted to kilometres here."
 
 [[params]]

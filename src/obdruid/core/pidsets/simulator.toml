@@ -24,6 +24,7 @@ max = 120
 warn_high = 80
 alarm_high = 95
 status = "verified"
+role = "dpf_soot"         # tells the health check what this value means (dpf_soot, dpf_distance, dpf_regen)
 
 [[params]]
 key = "DPF_PRESSURE"
@@ -57,6 +58,7 @@ formula = "A*256+B"
 unit = "km"
 interval = 30
 status = "verified"
+role = "dpf_distance"
 
 [[params]]
 key = "DPF_REGEN"
@@ -67,6 +69,7 @@ formula = "A"
 map = { 0 = "idle", 1 = "active" }   # a state instead of a number
 interval = 2
 status = "verified"
+role = "dpf_regen"
 
 [[params]]
 key = "DPF_REGEN_REQUEST"

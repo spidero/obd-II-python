@@ -49,6 +49,7 @@ class Snapshot:
     vehicle: dict = field(default_factory=dict)
     freeze: Optional[FreezeFrame] = None       # None = not read
     monitors: Optional[MonitorReport] = None   # None = not read
+    roles: dict[str, dict] = field(default_factory=dict)   # manufacturer parameters by role: role -> key, label, status
 
     def values(self, key: str) -> list[float]:
         return [v for _, v in self.samples.get(key, []) if isinstance(v, (int, float))]
@@ -158,7 +159,14 @@ def collect(session, duration: float = 30.0, progress: Optional[ProgressFn] = No
         if isinstance(r.value, (int, float)):
             counters[r.key] = float(r.value)
 
-    sample_keys = [k for k in SAMPLE_KEYS if k in supported]
+    # manufacturer parameters that say what they mean (role), e.g. the soot load of a particulate filter
+    roles: dict[str, dict] = {}
+    for p in getattr(session, "custom_params", lambda: [])():
+        if p.role and p.key in supported and p.role not in roles:
+            roles[p.role] = {"key": p.key, "label": p.label, "status": p.status}
+    regen_key = roles.get("dpf_regen", {}).get("key")
+
+    sample_keys = [k for k in SAMPLE_KEYS if k in supported] + [r["key"] for r in roles.values()]
     fast_keys = [k for k in FAST_KEYS if k in supported]
     samples: dict[str, list[tuple[float, float]]] = {k: [] for k in sample_keys}
 
@@ -170,14 +178,27 @@ def collect(session, duration: float = 30.0, progress: Optional[ProgressFn] = No
         label = "Sampling live data" if elapsed < slow_phase else "Sampling O2 sensors"
         report(0.05 + 0.95 * elapsed / duration, label)
         for r in session.read(phase_keys):
-            if isinstance(r.value, (int, float)) and not isinstance(r.value, bool):
-                samples[r.key].append((time.monotonic() - start, float(r.value)))
+            value = _active(r.value) if r.key == regen_key else r.value
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                samples[r.key].append((time.monotonic() - start, float(value)))
         # at most ~50 batches/s: a real car is slower anyway, the simulator would spin the CPU
         time.sleep(max(0.0, 0.02 - (time.monotonic() - tick)))
     report(1.0, "Evaluating")
     return Snapshot(status=status, dtcs=dtcs, counters=counters, samples=samples,
                     duration=time.monotonic() - start, adapter_voltage=adapter_voltage, vehicle=vehicle,
-                    freeze=freeze, monitors=monitors)
+                    freeze=freeze, monitors=monitors, roles=roles)
+
+
+ACTIVE_TEXTS = {"active", "on", "yes", "running", "true"}
+
+
+def _active(value) -> Optional[float]:
+    """A regeneration state as 1.0 / 0.0: a number above zero, or a state text such as "active"."""
+    if isinstance(value, str):
+        return 1.0 if value.strip().lower() in ACTIVE_TEXTS else 0.0
+    if isinstance(value, (int, float)):
+        return 1.0 if value > 0 else 0.0
+    return None
 
 
 # --------------------------------------------------------------------------- helpers
@@ -536,8 +557,63 @@ def _rule_monitors(s: Snapshot) -> list[Finding]:
     return out
 
 
+DPF = "Particulate filter"
+DPF_SOOT_WARN = 80      # % - indicative: most diesels start a regeneration at about 70-80 %
+DPF_SOOT_FULL = 100
+DPF_REGEN_DISTANCE = 1000   # km - regenerations usually come every 300-1000 km
+
+
+def _rule_dpf(s: Snapshot) -> list[Finding]:
+    """Particulate filter, from manufacturer parameters with a role (any make whose PID set has them)."""
+    if not s.roles:
+        return []
+    out: list[Finding] = []
+    soot = distance = None
+    if "dpf_soot" in s.roles:
+        values = s.values(s.roles["dpf_soot"]["key"])
+        if values:
+            soot = values[-1]
+            value = _fmt(soot, "%", 0)
+            if soot >= DPF_SOOT_FULL:
+                out.append(F("dpf_soot", DPF, "critical", "Particulate filter is full",
+                             "Soot load {value}. Drive 15–20 minutes at a steady speed above 60 km/h so the filter "
+                             "can regenerate. If the warning light stays on, a workshop has to force a regeneration – "
+                             "a filter left overfull may need replacing.", value, 20, value=value))
+            elif soot >= DPF_SOOT_WARN:
+                out.append(F("dpf_soot", DPF, "warn", "Particulate filter is filling up",
+                             "Soot load {value}. A regeneration is due: a longer drive at a steady speed lets it run. "
+                             "Many short trips keep the filter from cleaning itself.", value, 8, value=value))
+            else:
+                out.append(F("dpf_soot", DPF, "ok", "Particulate filter load OK", "Soot load {value}.", value,
+                             value=value))
+    if "dpf_regen" in s.roles and any(v >= 0.5 for v in s.values(s.roles["dpf_regen"]["key"])):
+        out.append(F("dpf_regen", DPF, "info", "Particulate filter regeneration in progress",
+                     "The engine is burning off the soot. If you can, finish the drive rather than switching the "
+                     "engine off: an interrupted regeneration starts again later and dilutes the oil with fuel."))
+    if "dpf_distance" in s.roles:
+        values = s.values(s.roles["dpf_distance"]["key"])
+        if values:
+            distance = values[-1]
+            value = _fmt(distance, "km", 0)
+            if distance > DPF_REGEN_DISTANCE and (soot is None or soot >= DPF_SOOT_WARN):
+                out.append(F("dpf_distance", DPF, "warn", "No particulate filter regeneration for a long distance",
+                             "{value} since the last regeneration (usually every 300–1000 km). With mostly short "
+                             "trips the filter cannot regenerate: plan a longer drive.", value, 5, value=value))
+            elif soot is None:
+                out.append(F("dpf_distance", DPF, "ok", "Particulate filter regenerates",
+                             "{value} since the last regeneration.", value, value=value))
+    if soot is None and distance is None and not out:
+        return [F("dpf", DPF, "skipped", "Particulate filter values not available",
+                  "The car did not answer the particulate filter parameters during the check.")]
+    if any(r["status"] != "verified" for r in s.roles.values()):
+        out.append(F("dpf_unverified", DPF, "info", "Particulate filter values are not verified",
+                     "They come from a manufacturer parameter set that has not been confirmed on this kind of car "
+                     "yet: compare them with a workshop tester before relying on them."))
+    return out
+
+
 RULES = [_rule_dtcs, _rule_readiness, _rule_monitors, _rule_charging, _rule_cooling, _rule_fuel_trims, _rule_idle,
-         _rule_o2]
+         _rule_o2, _rule_dpf]
 
 
 def score_findings(findings: list[Finding]) -> tuple[int, str]:
