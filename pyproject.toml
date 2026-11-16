@@ -7,7 +7,7 @@ name = "obdruid"
 version = "0.5.0"
 description = "OBD-II workshop tool: live data, reading and clearing trouble codes (CLI, web UI, desktop GUI)"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = "GPL-2.0-or-later"
 license-files = ["LICENSE"]
 authors = [{ name = "Piotr Skwarna" }]
@@ -42,7 +42,7 @@ obd-tool = "obdruid.cli:app"  # old command name, kept for existing installs
 where = ["src"]
 
 [tool.setuptools.package-data]
-obdruid = ["web/static/*", "core/dtc_*.json"]
+obdruid = ["web/static/*", "core/dtc_*.json", "core/pidsets/*.toml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

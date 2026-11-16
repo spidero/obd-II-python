@@ -63,9 +63,17 @@ def _reader(session: ObdSession):
 def _select_vehicle(session: ObdSession):
     """Activate the profile of the connected car (the simulator has its own). None if storage fails."""
     try:
-        return _storage().select_for_vin(session.vin(), simulated=session.simulated)
+        storage = _storage()
+        vehicle = storage.select_for_vin(session.vin(), simulated=session.simulated)
     except (OSError, ObdError):
         return None
+    try:
+        from .core import custom_pids
+
+        custom_pids.apply(session, storage, vehicle)   # manufacturer parameters chosen for this car
+    except (OSError, ObdError, ValueError) as e:
+        err.print(f"[yellow]Manufacturer parameters are not available:[/] {e}")
+    return vehicle
 
 
 def _version(value: bool):
@@ -181,11 +189,47 @@ def pids(ctx: typer.Context):
     except ObdError as e:
         _fail(e)
     t = Table(title=f"Supported parameters ({len(params)})")
-    for col in ("PID", "Key", "Name", "Unit", "Group"):
+    for col in ("PID", "Key", "Name", "Unit", "Group", "Source"):
         t.add_column(col)
     for p in params:
-        t.add_row(p.pid, p.key, p.label, p.unit, p.group)
+        source = f"{p.source}{' (unverified)' if p.status == 'unverified' else ''}" if p.source else ""
+        t.add_row(p.pid, p.key, p.label, p.unit, p.group, source)
     console.print(t)
+
+
+@app.command()
+def did(
+    ctx: typer.Context,
+    request: str = typer.Argument(..., help="Request in hex: 22 + identifier (e.g. 22F190) or 01 + PID."),
+    header: str = typer.Option("7E0", "--header", "-H", help="Module address: 7E0 engine, 7E1 transmission ... 7E7."),
+):
+    """Read one manufacturer identifier (UDS service 22) and show the raw answer.
+
+    For checking PID set definitions. Read only: other services are refused.
+    """
+    from .core.custom_pids import nrc_text
+
+    try:
+        with _open(ctx) as s:
+            answer = s.read_did(request, header)
+    except ObdError as e:
+        _fail(e)
+    if answer.ok:
+        data = answer.data or b""
+        console.print(f"[bold]{answer.request}[/] from {answer.header}: [bold cyan]{data.hex(' ').upper() or '(no data)'}[/]"
+                      f"  ({len(data)} byte{'s' if len(data) != 1 else ''})")
+        letters = "  ".join(f"{chr(65 + n)}={b}" for n, b in enumerate(data[:26]))
+        if letters:
+            console.print(f"Formula bytes: {letters}")
+        if data and all(32 <= b < 127 for b in data):
+            console.print(f"As text: {data.decode('ascii')}")
+    elif answer.nrc is not None:
+        console.print(f"[bold]{answer.request}[/] from {answer.header}: [yellow]refused[/] – 7F {answer.request[:2]} "
+                      f"{answer.nrc:02X} ({nrc_text(answer.nrc)})")
+        raise typer.Exit(1)
+    else:
+        console.print(f"[bold]{answer.request}[/] from {answer.header}: [yellow]no answer[/]")
+        raise typer.Exit(1)
 
 
 def _fmt(value) -> str:

@@ -446,3 +446,14 @@ dialog::backdrop { background: rgb(0 0 0 / .55); }
 .usage { font-weight: 600; }
 
 .support .actions + .actions, .support .licensed + .actions { margin-top: .6rem; }
+
+/* manufacturer parameters (PID sets) */
+.pidset-item { border-top: 1px solid var(--border); padding: .7rem 0; }
+.pidset-head { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem 1rem; }
+.pidset-head label { display: flex; align-items: center; gap: .5rem; cursor: pointer; }
+.pidset-head .chips { margin: 0; flex: 1; }
+.pidset summary { cursor: pointer; color: var(--muted); font-size: .9rem; margin-top: .35rem; }
+.pidset p { margin: .4rem 0; font-size: .9rem; }
+.pidset-error { color: var(--danger); font-size: .9rem; }
+.pidsets-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .8rem; }
+.btn-small { padding: .15rem .6rem; font-size: .8rem; }

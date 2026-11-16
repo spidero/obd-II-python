@@ -4,7 +4,9 @@ The emulator mimics a vLinker FS (ELM327 v2.3) connected to a petrol car on
 ISO 15765-4 CAN 11 bit / 500 kbit with a single engine ECU at 7E8 - the same
 set-up as the test car. It answers AT commands, mode 01 (live data), 02 (freeze
 frame), 03/07/0A (stored, pending and permanent trouble codes), 04 (clear codes),
-06 (on-board monitor test results) and 09 02 (VIN).
+06 (on-board monitor test results) and 09 02 (VIN). It also answers a few made-up
+manufacturer identifiers (service 22) - a particulate filter on the engine ECU and
+one value on a transmission module at 7E1 - for the built-in "simulator" PID set.
 
 Faults can be injected to see what a bad health check looks like, see FAULTS.
 
@@ -24,6 +26,9 @@ import tty
 from . import dtc as dtc_codes
 
 ECU_RESPONSE_ID = "7E8"
+FUNCTIONAL_ID = "7DF"
+ENGINE_ID = "7E0"
+TRANSMISSION_ID = "7E1"
 
 # Injectable faults: name -> description
 FAULTS = {
@@ -35,6 +40,8 @@ FAULTS = {
     "lazy_o2": "slow upstream O2 sensor",
     "catalyst": "worn catalyst (downstream O2 follows upstream)",
     "cleared": "codes cleared recently (monitors incomplete)",
+    "dpf_full": "particulate filter almost full (soot load 96 %)",
+    "dpf_regen": "particulate filter regeneration in progress",
 }
 ELM_ID = "ELM327 v2.3"
 
@@ -165,6 +172,8 @@ class Elm327Emulator:
         self.headers = False
         self.linefeeds = False
         self.spaces = True
+        self.header = FUNCTIONAL_ID      # request address, changed with AT SH
+        self.response_id = ECU_RESPONSE_ID
         self.protocol_found = False
         self.last_command = ""
 
@@ -255,12 +264,25 @@ class Elm327Emulator:
         if arg in ("S0", "S1"):
             self.spaces = arg == "S1"
             return ["OK"]
-        if arg.startswith(("SP", "TP")):
+        if arg.startswith("SH"):
+            if len(arg) != 5 or not all(c in "0123456789ABCDEF" for c in arg[2:]):
+                return ["?"]
+            self.header = arg[2:]
             return ["OK"]
         return ["OK"]
 
     def _obd(self, cmd: str) -> list[str]:
         mode = int(cmd[0:2], 16)
+        self.response_id = ECU_RESPONSE_ID
+        if self.header == TRANSMISSION_ID:
+            # the transmission module only knows service 22
+            self.response_id = "7E9"
+            data = self._mode22(cmd, self._transmission_dids()) if mode == 0x22 else bytes([0x7F, mode, 0x11])
+            return self._format(data)
+        if self.header not in (FUNCTIONAL_ID, ENGINE_ID):
+            return ["NO DATA"]   # nobody listens at this address
+        if mode == 0x22:
+            return self._format(self._mode22(cmd, self._engine_dids()))
         if mode == 0x01 and len(cmd) == 4:
             data = self._mode01(int(cmd[2:4], 16))
         elif mode == 0x02 and len(cmd) == 6:
@@ -294,14 +316,14 @@ class Elm327Emulator:
         sep = " " if self.spaces else ""
         if len(data) <= 7:
             if self.headers:
-                return [sep.join([ECU_RESPONSE_ID, f"{len(data):02X}", self._hex(data)])]
+                return [sep.join([self.response_id, f"{len(data):02X}", self._hex(data)])]
             return [self._hex(data)]
         chunks = [data[:6]] + [data[i:i + 7] for i in range(6, len(data), 7)]
         if self.headers:
-            lines = [sep.join([ECU_RESPONSE_ID, "10", f"{len(data):02X}", self._hex(chunks[0])])]
+            lines = [sep.join([self.response_id, "10", f"{len(data):02X}", self._hex(chunks[0])])]
             for n, chunk in enumerate(chunks[1:], start=1):
                 padded = chunk + bytes(7 - len(chunk))
-                lines.append(sep.join([ECU_RESPONSE_ID, f"2{n % 16:X}", self._hex(padded)]))
+                lines.append(sep.join([self.response_id, f"2{n % 16:X}", self._hex(padded)]))
             return lines
         lines = [f"{len(data):03X}"]
         for n, chunk in enumerate(chunks):
@@ -468,6 +490,41 @@ class Elm327Emulator:
         for tid, uas, value, lo, hi in monitors[mid] or [(0x0C if mid >= 0xA1 else 0x80, 0x24, 0, 0, 0)]:
             out += bytes([mid, tid, uas]) + value.to_bytes(2, "big") + lo.to_bytes(2, "big") + hi.to_bytes(2, "big")
         return out
+
+    # ------------------------------------------------------------------ service 22 (made-up identifiers)
+    def _engine_dids(self) -> dict[int, bytes]:
+        """Particulate filter values of the built-in "simulator" PID set (core/pidsets/simulator.toml)."""
+        e = self.engine
+        regen = "dpf_regen" in self.faults
+        if "dpf_full" in self.faults:
+            soot = 96.0
+        elif regen:
+            soot = max(8.0, 70.0 - e.elapsed() % 600 / 6)        # burning off
+        else:
+            soot = 35.0 + e.elapsed() % 600 / 20                  # slowly filling up
+        exhaust = (610 if regen else 240 + 180 * e.throttle) + e.noise(3)
+        pressure = soot * 0.08 + 6 * e.throttle                   # kPa across the filter
+        correction = int(round(-0.35 * 100))                      # mg per stroke, signed
+        return {
+            0xF190: (self.vin or "").encode().ljust(17, b" ")[:17],
+            0xDD01: int(soot * 100).to_bytes(2, "big"),
+            0xDD02: int(pressure * 100).to_bytes(2, "big"),
+            0xDD03: int((exhaust + 40) * 10).to_bytes(2, "big"),
+            0xDD04: (187).to_bytes(2, "big"),                     # km since the last regeneration
+            0xDD05: bytes([1 if regen else 0, 0x04 if regen else 0x00]),
+            0xDD06: correction.to_bytes(2, "big", signed=True),
+        }
+
+    def _transmission_dids(self) -> dict[int, bytes]:
+        return {0xDE01: bytes([int(78 + self.engine.noise(1) + 40)])}   # oil temperature, 78 °C
+
+    def _mode22(self, cmd: str, dids: dict[int, bytes]) -> bytes:
+        if len(cmd) != 6:
+            return bytes([0x7F, 0x22, 0x13])     # incorrect message length
+        did = int(cmd[2:6], 16)
+        if did not in dids:
+            return bytes([0x7F, 0x22, 0x31])     # request out of range
+        return bytes([0x62]) + did.to_bytes(2, "big") + dids[did]
 
     # ------------------------------------------------------------------ DTC / mode 09
     def _dtc_frame(self, sid: int, codes: list[str]) -> bytes:

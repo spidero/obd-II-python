@@ -15,7 +15,8 @@ import obd
 from obd import OBDStatus
 
 from . import dtc as dtc_codes
-from . import diag, transports
+from . import custom_pids, diag, transports
+from .custom_pids import CustomParam, PidSetError
 from .models import (AdapterInfo, Dtc, DtcReport, FreezeFrame, MonitorReport, Param, Reading, ReadinessTest,
                      VehicleStatus)
 from .pids import NOT_LIVE, READINESS_LABELS, param_for, unit_name
@@ -28,6 +29,26 @@ obd.logger.setLevel(logging.WARNING)
 
 class ObdError(RuntimeError):
     """Raised when the adapter or the car does not respond as expected."""
+
+
+@dataclass
+class DidAnswer:
+    """Answer to one manufacturer request (service 22, or a mode 01 PID python-OBD does not know)."""
+    request: str                 # e.g. "22F190"
+    header: str                  # request address, e.g. "7E0"
+    data: bytes | None = None    # data bytes after the echoed identifier; None = no positive answer
+    nrc: int | None = None       # negative response code, when the module refused
+
+    @property
+    def ok(self) -> bool:
+        return self.data is not None
+
+    @property
+    def result(self) -> str:
+        """Short outcome stored in the vehicle profile: "ok", "none" or "nrcXX"."""
+        if self.ok:
+            return "ok"
+        return "none" if self.nrc is None else f"nrc{self.nrc:02X}"
 
 
 @dataclass
@@ -84,6 +105,9 @@ class ObdSession:
         self._conn: obd.OBD | None = None
         self._emulator = None
         self.last_error: str | None = None
+        self._header: str | None = None                 # request address set with AT SH; None = adapter default
+        self._custom: dict[str, CustomParam] = {}       # manufacturer parameters switched on for this car
+        self._custom_cache: dict[str, tuple[float, Reading]] = {}
 
     # ------------------------------------------------------------------ connection
     def connect(self) -> None:
@@ -124,6 +148,8 @@ class ObdSession:
                 raise ObdError(self.last_error)
             self._complete_pid_masks(conn)
             self._conn = conn
+            self._header = None       # the adapter was reset: it sends to the functional address again
+            self._custom_cache.clear()
             self.last_error = None
 
     @staticmethod
@@ -184,19 +210,43 @@ class ObdSession:
         self.close()
 
     # ------------------------------------------------------------------ queries
-    def _query(self, cmd, force: bool = False):
+    # Functional (broadcast) request address on 11 bit CAN - what the adapter uses until AT SH changes it.
+    FUNCTIONAL_HEADER = "7DF"
+
+    def _set_header(self, header: str | None) -> None:
+        """Address the next requests to one module (physical addressing) or, with None, to all of them.
+
+        python-OBD is never told about the header (its commands keep their default one), so its standard
+        queries work unchanged; `_query` restores the functional address before each of them.
+        The AT command goes through `conn.query`, not straight to the adapter: python-OBD sends a bare
+        carriage return ("repeat") when a request equals the previous one it knows about, and the adapter
+        would then repeat the AT SH instead of the request.
+        """
+        if header == self._header:
+            return
         conn = self._require()
+        target = header or self.FUNCTIONAL_HEADER
+        cmd = obd.OBDCommand("SET_HEADER", "set the request address", b"ATSH" + target.encode(), 0,
+                             lambda messages: " ".join(m.raw() for m in messages), obd.ECU.ALL, False)
+        if "OK" not in (conn.query(cmd, force=True).value or ""):
+            self._header = "unknown"   # forces a new AT SH before the next request
+            raise ObdError(f"The adapter did not accept the request address {target}")
+        self._header = header
+
+    def _query(self, cmd, force: bool = False, header: str | None = None):
+        conn = self._require()
+        self._set_header(header)
         response = conn.query(cmd, force=force)
         if conn.status() == OBDStatus.NOT_CONNECTED:
             self.last_error = "Lost connection to the adapter"
             raise ObdError(self.last_error)
         return response
 
-    def _raw(self, command: str) -> list[bytes]:
+    def _raw(self, command: str, header: str | None = None) -> list[bytes]:
         """Send a raw service request, return the response payloads (engine ECU first)."""
         cmd = obd.OBDCommand("RAW_" + command, "raw " + command, command.encode(), 0,
                              lambda messages: [(m.ecu, bytes(m.data)) for m in messages], obd.ECU.ALL, False)
-        answers = self._query(cmd, force=True).value or []
+        answers = self._query(cmd, force=True, header=header).value or []
         answers.sort(key=lambda item: item[0] != obd.ECU.ENGINE)
         return [data for _, data in answers]
 
@@ -255,14 +305,88 @@ class ObdSession:
             cmds = [c for c in conn.supported_commands
                     if c.mode == 1 and c.name not in NOT_LIVE]
             cmds.sort(key=lambda c: c.pid)
-            return [param_for(c) for c in cmds]
+            return [param_for(c) for c in cmds] + [p.param() for p in self._custom.values()]
+
+    # ------------------------------------------------------------------ manufacturer parameters
+    def read_did(self, request: str, header: str = custom_pids.DEFAULT_HEADER) -> DidAnswer:
+        """One read-only manufacturer request (service 22 or 01), addressed to a single module."""
+        try:
+            request, header = custom_pids.check_request(request), custom_pids.check_header(header)
+        except PidSetError as e:
+            raise ObdError(str(e)) from None
+        with self._lock:
+            conn = self._require()
+            if conn.protocol_id() not in ("6", "8"):
+                raise ObdError("Manufacturer parameters need a car with 11 bit CAN "
+                               f"(this one uses {conn.protocol_name()})")
+            payloads = self._raw(request, header=header)
+            echo = bytes([int(request[:2], 16) + 0x40]) + bytes.fromhex(request[2:])
+            answer = DidAnswer(request=request, header=header)
+            for data in payloads:
+                if data[:len(echo)] == echo:
+                    answer.data = data[len(echo):]
+                    return answer
+                # 7F <service> <code>; 0x78 only says "wait, the answer is coming"
+                if len(data) >= 3 and data[0] == 0x7F and data[1] == echo[0] - 0x40 and data[2] != 0x78:
+                    answer.nrc = data[2]
+            return answer
+
+    def set_custom_params(self, params: list[CustomParam]) -> None:
+        """Manufacturer parameters to offer next to the standard ones (see custom_pids.apply)."""
+        with self._lock:
+            self._custom = {p.key: p for p in params}
+            self._custom_cache.clear()
+
+    def custom_params(self) -> list[CustomParam]:
+        with self._lock:
+            return list(self._custom.values())
+
+    def probe_custom(self, params: list[CustomParam]) -> dict[str, str]:
+        """Ask once for every parameter: key -> "ok", "none", "bad" or "nrcXX"."""
+        with self._lock:
+            answers: dict[tuple[str, str], DidAnswer] = {}
+            results = {}
+            for p in sorted(params, key=lambda p: p.header):
+                try:
+                    answer = answers.get((p.header, p.request)) or self.read_did(p.request, p.header)
+                except ObdError:
+                    if not self.connected:
+                        raise
+                    results[p.key] = "none"   # e.g. the car is not on 11 bit CAN
+                    continue
+                answers[(p.header, p.request)] = answer
+                results[p.key] = "bad" if answer.ok and p.decode(answer.data) is None else answer.result
+            return results
+
+    def _read_custom(self, keys: list[str]) -> dict[str, Reading]:
+        """Read manufacturer parameters: one request per identifier, grouped by module, slow ones from cache."""
+        now = time.monotonic()
+        answers: dict[tuple[str, str], DidAnswer] = {}
+        out = {}
+        for p in sorted((self._custom[k] for k in keys), key=lambda p: p.header):
+            cached = self._custom_cache.get(p.key)
+            if cached and p.interval and now - cached[0] < p.interval:
+                out[p.key] = cached[1]
+                continue
+            answer = answers.get((p.header, p.request))
+            if answer is None:
+                answer = answers[(p.header, p.request)] = self.read_did(p.request, p.header)
+            reading = Reading(key=p.key, label=p.label, value=p.decode(answer.data) if answer.ok else None,
+                              unit=p.unit, pid=p.request, time=time.time())
+            self._custom_cache[p.key] = (now, reading)
+            out[p.key] = reading
+        return out
 
     def read(self, keys: list[str]) -> list[Reading]:
         """Read current values of the given parameters (python-OBD command names)."""
         with self._lock:
             conn = self._require()
             readings = []
+            custom = self._read_custom([k for k in keys if k in self._custom])
             for key in keys:
+                if key in custom:
+                    readings.append(custom[key])
+                    continue
                 if key not in obd.commands:
                     raise ObdError(f"Unknown parameter: {key}")
                 cmd = obd.commands[key]
@@ -311,6 +435,7 @@ class ObdSession:
         """Clear trouble codes (mode 04). Also resets readiness monitors and freeze frames."""
         with self._lock:
             conn = self._require()
+            self._set_header(None)
             response = conn.query(obd.commands.CLEAR_DTC, force=True)
             # a positive answer is service id 0x44 (0x04 + 0x40)
             if not any(m.data[:1] == bytearray([0x44]) for m in response.messages):

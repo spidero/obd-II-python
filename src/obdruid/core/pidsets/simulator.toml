@@ -1,0 +1,112 @@
+# Demo PID set for the built-in simulator (obdruid --sim ...).
+# The identifiers are made up - they exist only in the simulator - but the file shows
+# everything a real set can use. See the README, section "Manufacturer parameters".
+format = 1
+id = "simulator"
+name = "Simulator – particulate filter"
+source = "Made-up identifiers answered by the OBDruid simulator"
+
+[match]
+simulator = true          # switched on automatically, and only, for the simulator
+
+[[params]]
+key = "DPF_SOOT"
+label = "DPF soot load"
+label_pl = "Zapełnienie DPF sadzą"
+request = "22DD01"        # service 22 + identifier
+header = "7E0"            # engine module (the default)
+formula = "(A*256+B)/100" # A, B, C... are the data bytes of the answer
+unit = "%"
+decimals = 1
+interval = 5              # seconds between reads; soot does not change faster
+min = 0
+max = 120
+warn_high = 80
+alarm_high = 95
+status = "verified"
+
+[[params]]
+key = "DPF_PRESSURE"
+label = "DPF differential pressure"
+label_pl = "Różnica ciśnień na DPF"
+request = "22DD02"
+formula = "(A*256+B)/100"
+unit = "kPa"
+decimals = 2
+min = 0
+max = 20
+status = "verified"
+
+[[params]]
+key = "DPF_TEMP"
+label = "Exhaust temperature before DPF"
+label_pl = "Temperatura spalin przed DPF"
+request = "22DD03"
+formula = "(A*256+B)/10-40"
+unit = "°C"
+min = 0
+max = 800
+status = "verified"
+
+[[params]]
+key = "DPF_DISTANCE"
+label = "Distance since DPF regeneration"
+label_pl = "Dystans od regeneracji DPF"
+request = "22DD04"
+formula = "A*256+B"
+unit = "km"
+interval = 30
+status = "verified"
+
+[[params]]
+key = "DPF_REGEN"
+label = "DPF regeneration"
+label_pl = "Regeneracja DPF"
+request = "22DD05"
+formula = "A"
+map = { 0 = "idle", 1 = "active" }   # a state instead of a number
+interval = 2
+status = "verified"
+
+[[params]]
+key = "DPF_REGEN_REQUEST"
+label = "DPF regeneration requested"
+label_pl = "Żądanie regeneracji DPF"
+request = "22DD05"        # same identifier as above: asked for only once per read
+formula = "bit(B,2)"      # one bit of the second byte
+map = { 0 = "no", 1 = "yes" }
+interval = 2
+status = "verified"
+
+[[params]]
+key = "INJ_CORRECTION_1"
+label = "Injector correction cyl. 1"
+label_pl = "Korekta wtryskiwacza cyl. 1"
+request = "22DD06"
+formula = "signed(A,B)/100"          # two's complement
+unit = "mg"
+decimals = 2
+status = "verified"
+
+[[params]]
+key = "GEARBOX_OIL_TEMP"
+label = "Gearbox oil temperature"
+label_pl = "Temperatura oleju skrzyni"
+request = "22DE01"
+header = "7E1"            # another module: transmission
+formula = "A-40"
+unit = "°C"
+interval = 5
+min = 0
+max = 140
+warn_high = 110
+alarm_high = 125
+status = "verified"
+
+[[params]]
+key = "NOT_IN_THIS_CAR"
+label = "Example of a parameter the car does not have"
+label_pl = "Przykład parametru, którego auto nie ma"
+request = "22DDFF"        # the simulator refuses it (7F 22 31), so it is dropped after probing
+formula = "A"
+status = "unverified"
