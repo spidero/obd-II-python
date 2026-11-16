@@ -27,6 +27,9 @@ class Param:
     pid: str
     group: str
     decimals: int = 0
+    label_pl: str = ""   # Polish label of a parameter that comes from a PID set file
+    status: str = ""     # "verified" / "unverified" for manufacturer parameters, "" for standard ones
+    source: str = ""     # id of the PID set the parameter comes from
 
     def to_dict(self) -> dict:
         return asdict(self)

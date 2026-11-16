@@ -1,0 +1,129 @@
+# Ford diesel - particulate filter (DPF) candidates.
+#
+# NOT VERIFIED ON A CAR YET. The identifiers and scalings below were converted from the
+# community database OBDb (https://github.com/OBDb/Ford, signalsets/v3/default.json),
+# where they were collected mostly on newer Ford diesels. Which of them an older engine
+# (for example the 2.2 TDCi of a Transit Mk7) answers is unknown: switch the set on and
+# the program probes every parameter once and keeps the ones your car has.
+# Treat every value with care until it is confirmed.
+#
+# License of this file: CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/),
+# the license of OBDb. Changes made: converted to the OBDruid PID set format, miles
+# converted to kilometres, Polish labels added.
+format = 1
+id = "ford-diesel-dpf"
+name = "Ford diesel – particulate filter"
+source = "OBDb/Ford (github.com/OBDb/Ford), converted; not verified on a car"
+license = "CC BY-SA 4.0"
+note = "Candidates from a community database. Probing shows which ones your engine answers; the scalings still need to be confirmed against real driving (soot rises slowly, drops during a regeneration)."
+
+[match]
+wmi = ["WF0", "NM0", "VS6", "SFA"]   # Ford of Europe / Turkey / Spain / UK
+fuel = "diesel"
+
+[[params]]
+key = "DPF_SOOT"
+label = "DPF soot load"
+label_pl = "Zapełnienie DPF sadzą"
+request = "22042C"
+formula = "(A*256+B)*0.0871944108-57.142857"
+unit = "%"
+decimals = 1
+interval = 5
+min = 0
+max = 150
+warn_high = 90
+alarm_high = 120
+
+[[params]]
+key = "DPF_SOOT_V2"
+label = "DPF soot load (variant 2)"
+label_pl = "Zapełnienie DPF sadzą (wariant 2)"
+request = "220579"
+formula = "A*256+B"
+unit = "%"
+interval = 5
+min = 0
+max = 150
+
+[[params]]
+key = "DPF_DISTANCE"
+label = "Distance since DPF regeneration"
+label_pl = "Dystans od regeneracji DPF"
+request = "220434"
+formula = "(A*65536+B*256+C)*0.38624256"   # source: raw * 6/25 miles
+unit = "km"
+interval = 30
+note = "The source gives miles (raw x 6/25); converted to kilometres here."
+
+[[params]]
+key = "DPF_DISTANCE_V2"
+label = "Distance since DPF regeneration (variant 2)"
+label_pl = "Dystans od regeneracji DPF (wariant 2)"
+request = "22FD8A"
+formula = "(A*256+B)*0.009977908"
+unit = "km"
+decimals = 1
+interval = 30
+
+[[params]]
+key = "DPF_REGEN_STATUS"
+label = "DPF regeneration status"
+label_pl = "Stan regeneracji DPF"
+request = "220966"
+formula = "A/128"
+decimals = 2
+interval = 2
+note = "Raw scalar from the source (0 to 1.99); the meaning of the values is not documented."
+
+[[params]]
+key = "DPF_REGEN_STATUS_V2"
+label = "DPF regeneration status (variant 2)"
+label_pl = "Stan regeneracji DPF (wariant 2)"
+request = "22F48B"
+formula = "(A*256+B)/10"
+decimals = 1
+interval = 2
+note = "Raw scalar from the source; the meaning of the values is not documented."
+
+[[params]]
+key = "DPF_PRESSURE"
+label = "DPF differential pressure"
+label_pl = "Różnica ciśnień na DPF"
+request = "22116C"
+formula = "(A*256+B)*7.928974/1000"
+unit = "kPa"
+decimals = 2
+min = 0
+max = 60
+note = "The source lists raw x 7.928974 as kPa, which gives impossible values; read here as Pa. To be confirmed on a car."
+
+[[params]]
+key = "EGT_BEFORE_DOC"
+label = "Exhaust temperature before oxidation catalyst"
+label_pl = "Temperatura spalin przed katalizatorem utleniającym"
+request = "220991"
+formula = "A*256+B-40"
+unit = "°C"
+min = 0
+max = 900
+
+[[params]]
+key = "EGT_BEFORE_DPF"
+label = "Exhaust temperature before DPF"
+label_pl = "Temperatura spalin przed DPF"
+request = "220992"
+formula = "A*256+B-40"
+unit = "°C"
+min = 0
+max = 900
+
+[[params]]
+key = "EGT_AFTER_DPF"
+label = "Exhaust temperature after DPF"
+label_pl = "Temperatura spalin za DPF"
+request = "221171"
+formula = "A*256+B-40"
+unit = "°C"
+min = 0
+max = 900

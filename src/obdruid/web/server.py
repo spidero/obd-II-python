@@ -24,7 +24,7 @@ from ..core import DEFAULT_DASHBOARD, ConnectionSettings, ObdError, ObdSession, 
 from ..core.health import HealthReport, run_check
 from ..core.pids import DEFAULT_TILES
 from ..core.report_html import render_html
-from ..core import supporter, usage
+from ..core import custom_pids, supporter, usage
 from ..core.storage import FUELS, Storage, StorageError
 from ..core.vin import decode as vin_decode
 from ..core.trip import LiveReader, TripComputer
@@ -35,6 +35,14 @@ STATIC_DIR = Path(__file__).parent / "static"
 
 class SupporterBody(BaseModel):
     key: str
+
+
+class PidSetsEnabled(BaseModel):
+    ids: List[str]
+
+
+class PidSetImport(BaseModel):
+    text: str
 
 
 class AppState:
@@ -54,6 +62,7 @@ class AppState:
         self._lock = threading.Lock()
         self.last_report: Optional[HealthReport] = None
         self.health_running = False
+        self.pid_probe: Dict[str, str] = {}   # manufacturer parameters: key -> probe result for the connected car
 
     def connect(self, settings: Optional[ConnectionSettings] = None) -> None:
         self.auto_reconnect = True
@@ -87,6 +96,16 @@ class AppState:
             self.trip.fuel = vehicle.get("fuel", "petrol")
         except Exception as e:  # profiles are a convenience, never a reason to fail the connection
             log.warning("Could not update the vehicle profile: %s", e)
+        self.apply_pid_sets()
+
+    def apply_pid_sets(self, reprobe: bool = False) -> None:
+        """Switch on the manufacturer parameters chosen for the active car (probing the new ones)."""
+        try:
+            self.pid_probe = custom_pids.apply(self.session, self.storage, self.storage.active(), reprobe=reprobe)
+        except Exception as e:  # extra parameters must never break the connection
+            log.warning("Could not set up manufacturer parameters: %s", e)
+            self.pid_probe = {}
+        self.reader = LiveReader(self.session, self.trip)   # its list of supported parameters changed
 
     @property
     def vehicle(self) -> dict:
@@ -229,6 +248,12 @@ def create_app(settings: Optional[ConnectionSettings] = None, connect: bool = Tr
                 state.state, state.error = "error", str(e)
             raise HTTPException(502, detail=str(e))
 
+    def stored(fn, *args):
+        try:
+            return fn(*args)
+        except StorageError as e:
+            raise HTTPException(404, detail=str(e))
+
     @app.get("/api/state")
     def get_state():
         return state.to_dict()
@@ -280,9 +305,68 @@ def create_app(settings: Optional[ConnectionSettings] = None, connect: bool = Tr
         def work(s: ObdSession):
             params = [p.to_dict() for p in state.reader.params()]
             keys = {p["key"] for p in params}
-            return {"params": params, "default": [k for k in DEFAULT_DASHBOARD if k in keys],
-                    "tiles": {k: v for k, v in DEFAULT_TILES.items() if k in keys}}
+            tiles = {k: v for k, v in DEFAULT_TILES.items() if k in keys}
+            tiles.update({p.key: p.tile for p in s.custom_params() if p.tile})
+            return {"params": params, "default": [k for k in DEFAULT_DASHBOARD if k in keys], "tiles": tiles}
         return guarded(work)
+
+    # ------------------------------------------------------------------ manufacturer parameters (PID sets)
+    def pid_sets_state() -> dict:
+        vehicle = state.vehicle
+        sets, errors = custom_pids.load_sets(state.storage.pidsets_dir)
+        connected = state.state == "connected" and state.session.connected
+        simulated = connected and state.session.simulated
+        info = vin_decode(vehicle.get("vin"))
+        enabled = {s.id for s in custom_pids.enabled_sets(sets, vehicle, simulated)}
+        probe = state.pid_probe if connected else (vehicle.get("pid_probe") or {})
+        out = []
+        for s in sets:
+            if s.simulator_only and not simulated:
+                continue
+            data = s.to_dict()
+            data["enabled"] = s.id in enabled
+            data["locked"] = s.simulator_only
+            data["suggested"] = s.suggested_for(vehicle.get("vin"), info.year if info else None, vehicle.get("fuel"))
+            for p in data["params"]:
+                p["probe"] = probe.get(p["key"], "") if s.id in enabled else ""
+            out.append(data)
+        return {"sets": out, "errors": errors, "connected": connected, "vehicle": vehicle["name"]}
+
+    @app.get("/api/pidsets")
+    def get_pid_sets():
+        return pid_sets_state()
+
+    @app.put("/api/pidsets/enabled")
+    def put_pid_sets_enabled(req: PidSetsEnabled):
+        known = {s.id for s in custom_pids.load_sets(state.storage.pidsets_dir)[0] if not s.simulator_only}
+        state.storage.update(state.vehicle["id"], pidsets=[i for i in req.ids if i in known])
+        if state.state == "connected" and state.session.connected:
+            state.apply_pid_sets()
+        return pid_sets_state()
+
+    @app.post("/api/pidsets/probe")
+    def post_pid_sets_probe():
+        state.check()
+        state.apply_pid_sets(reprobe=True)
+        return pid_sets_state()
+
+    @app.post("/api/pidsets")
+    def post_pid_set(req: PidSetImport):
+        try:
+            found = custom_pids.parse_set(req.text)
+        except custom_pids.PidSetError as e:
+            raise HTTPException(400, detail=str(e))
+        if found.simulator_only:
+            raise HTTPException(400, detail="A set for the simulator cannot be imported")
+        state.storage.save_pidset(found.id, req.text)
+        return pid_sets_state()
+
+    @app.delete("/api/pidsets/{set_id}")
+    def delete_pid_set(set_id: str):
+        stored(state.storage.delete_pidset, set_id)
+        if state.state == "connected" and state.session.connected:
+            state.apply_pid_sets()
+        return pid_sets_state()
 
     @app.get("/api/read")
     def get_read(keys: str):
@@ -348,12 +432,6 @@ def create_app(settings: Optional[ConnectionSettings] = None, connect: bool = Tr
         return {"saved": record, "trip": state.trip.summary()}
 
     # ------------------------------------------------------------------ vehicles, history
-    def stored(fn, *args):
-        try:
-            return fn(*args)
-        except StorageError as e:
-            raise HTTPException(404, detail=str(e))
-
     def check_fuel(req: VehicleRequest) -> None:
         if req.fuel is not None and req.fuel not in FUELS:
             raise HTTPException(400, detail=f"Fuel must be one of: {', '.join(FUELS)}")
@@ -383,6 +461,8 @@ def create_app(settings: Optional[ConnectionSettings] = None, connect: bool = Tr
     def post_vehicle_activate(vehicle_id: str):
         vehicle = stored(state.storage.activate, vehicle_id)
         state.trip.fuel = vehicle["fuel"]
+        if state.state == "connected" and state.session.connected:
+            state.apply_pid_sets()   # each car has its own manufacturer parameters
         return vehicle
 
     @app.delete("/api/vehicles/{vehicle_id}")

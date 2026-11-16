@@ -14,7 +14,7 @@ A small OBD-II workshop tool in Python: live data, reading and clearing trouble 
 freeze frame, on-board monitor tests (mode 06), readiness monitors, fuel consumption and a
 **vehicle health check** with a 0–100 score. One core, three front ends:
 
-- **CLI** – `obdruid info | live | dtc | tests | clear | health | battery | history | pids | ports | supporter`
+- **CLI** – `obdruid info | live | dtc | tests | clear | health | battery | history | pids | did | ports | supporter`
 - **Web UI** – `obdruid web`, open it from a laptop or a phone
 - **Desktop GUI** – `obdruid gui`, the same UI in a native window (pywebview)
 
@@ -38,7 +38,7 @@ A built-in **ELM327 simulator** (`--sim`) lets you run everything without a car.
 
 ## Quick start
 
-1. **Install** (Linux, Python 3.10+; details in [Install](#install)):
+1. **Install** (Linux, Python 3.11+; details in [Install](#install)):
    ```bash
    git clone https://github.com/spidero/obdruid.git && cd obdruid
    python3 -m venv --system-site-packages .venv && .venv/bin/pip install -e ".[gui]"
@@ -159,6 +159,7 @@ obdruid -p /dev/ttyUSB0 live        # live data (Ctrl+C to stop)
 obdruid live RPM SPEED COOLANT_TEMP -i 0.25 --csv drive.csv
 obdruid pids                        # parameters supported by the car
 obdruid live RPM FUEL_FLOW FUEL_ECONOMY TRIP_DISTANCE   # calculated fuel use and trip values
+obdruid did 22F190                  # one manufacturer identifier, raw answer (read only)
 obdruid dtc                         # stored, pending and permanent codes + freeze frame
 obdruid dtc --json
 obdruid tests                       # on-board monitor test results (mode 06)
@@ -266,6 +267,75 @@ reports it, otherwise it is estimated from the mass air flow for petrol and LPG 
 vehicle profile). It is an estimate – a little high while coasting and at full load. Diesels need
 PID 5E. “Save & reset trip” keeps the trip in the history.
 
+### Manufacturer parameters (PID sets)
+
+Standard OBD-II does not show everything the car knows – the soot load of a diesel particulate
+filter, for example, is only available under the car maker's own identifiers (UDS service 22, or
+service 21 on e.g. Hyundai/Kia and Toyota).
+OBDruid reads such values from **PID set files**, so a new car needs a text file, not new code.
+
+- *Vehicle info → Manufacturer parameters*: switch a set on for the car. The program asks once for
+  every parameter of the set ("probing") and keeps the ones the car answers; they then appear among
+  the normal parameters – dashboard tiles, charts, alarms, CSV, `obdruid live`.
+- **Reading only.** A set may use the reading services 22, 21 and 01 – nothing else. Requests that
+  write to or control a module (2E, 2F, 31, session changes...) are refused when the file is loaded.
+- Works on cars with 11-bit CAN, with the modules at `7E0`–`7E7` (engine, transmission...).
+- Parameters marked **unverified** come from lists that were not confirmed on a real car: check the
+  values before you rely on them.
+- Try it without a car: `obdruid --sim web` has a demo set (a particulate filter), and
+  `--sim-fault dpf_regen` / `dpf_full` show a regeneration and a full filter.
+
+| Sets for the car | On the dashboard |
+|---|---|
+| ![PID sets](docs/screenshots/sim-pid-sets.png) | ![DPF tiles](docs/screenshots/sim-dashboard-dpf.png) |
+
+Sets that come with the program:
+
+| Set | For | Status |
+|---|---|---|
+| Ford diesel – particulate filter | soot load, distance since regeneration, regeneration status, differential pressure, exhaust temperatures | **unverified** candidates converted from [OBDb/Ford](https://github.com/OBDb/Ford) (CC BY-SA 4.0); not yet confirmed on a car |
+| Simulator – particulate filter | demo for `--sim` | made-up identifiers |
+
+Your own set is a TOML file, imported in the same card (or put in `~/.local/share/obdruid/pidsets/`):
+
+```toml
+format = 1
+id = "my-car-dpf"                # lower case letters, digits and "-"
+name = "My car – DPF"
+source = "where the identifiers come from"
+
+[match]                          # optional: marks the set as "matches this car"
+wmi = ["WF0"]                    # start of the VIN
+fuel = "diesel"
+years = [2006, 2014]
+
+[[params]]
+key = "DPF_SOOT"
+label = "DPF soot load"
+label_pl = "Zapełnienie DPF sadzą"   # optional Polish label
+request = "22XXXX"               # service 22 + identifier (or 21XX, 01XX)
+header = "7E0"                   # module address, default 7E0 (engine)
+formula = "(A*256+B)/100"        # A, B, C... Z, AA, AB... = data bytes of the answer
+unit = "%"
+decimals = 1
+interval = 5                     # seconds between reads (optional)
+min = 0                          # gauge scale and alert limits (optional)
+max = 120
+warn_high = 80
+alarm_high = 95
+status = "unverified"            # or "verified" once checked on a real car
+```
+
+Formulas use the same letters as Torque's custom PIDs: numbers, `+ - * / // %`, brackets, bit
+operations (`& | ^ << >>`) and `signed(A)`, `signed(A,B)`, `bit(A,n)`, `abs()`, `min()`, `max()`.
+A state instead of a number: `map = { 0 = "idle", 1 = "active" }`. Several parameters may share one
+identifier (different bytes or bits) – it is asked for only once per read.
+
+`obdruid did 22XXXX [--header 7E1]` (or `obdruid did 21XX`) shows the raw bytes of one identifier, with the letters the
+formula will see – handy for checking a definition. A complete example is
+[`simulator.toml`](src/obdruid/core/pidsets/simulator.toml). Found identifiers that work on your
+car? Please share them in an issue or a pull request.
+
 ### Vehicle profiles and history
 
 Each vehicle has a profile (name, VIN, fuel, notes), its own dashboard layout and a history of health
@@ -315,6 +385,8 @@ Before clearing, the codes and the freeze frame are saved to the vehicle history
 | GET | `/api/trip` | trip summary; `POST /api/trip/reset` saves and resets it |
 | GET, POST | `/api/vehicles` | vehicle profiles; `PUT`/`DELETE /api/vehicles/{id}`, `POST .../activate` |
 | GET | `/api/history` | history records (`?kind=health\|dtc-backup\|trip`); `GET`/`DELETE /api/history/{id}`, `GET .../report.html` |
+| GET, POST | `/api/pidsets` | manufacturer PID sets of the active vehicle; `POST {"text": "<TOML>"}` imports a file, `DELETE /api/pidsets/{id}` removes it |
+| PUT | `/api/pidsets/enabled` | `{"ids": [...]}` – sets switched on for the active vehicle; `POST /api/pidsets/probe` asks the car again |
 | GET | `/api/about` | version, links, supported adapters |
 | WS | `/ws/health` | send `{"duration": 30}`, receive progress and the report |
 | GET | `/api/health/last` | last health report (JSON) |
@@ -397,8 +469,8 @@ tests/                pytest, all against the simulator
 
 - Docker image + compose for the Orange Pi (adapter passed with `devices:`)
 - MQTT publishing for Home Assistant
-- Custom / manufacturer PIDs from a file
-- Windows build, Bluetooth adapters
+- Manufacturer PID sets for real cars (verified on the car), import of Torque lists
+- Windows build and a single-file Linux build (AppImage)
 
 ## Support
 
@@ -439,6 +511,10 @@ OBDruid is free software: you can redistribute it and/or modify it under the ter
 GNU General Public License as published by the Free Software Foundation, either
 [version 2 of the License](LICENSE), or (at your option) any later version
 (SPDX: `GPL-2.0-or-later`).
+
+PID set files converted from community databases keep the license of their source, stated at the
+top of each file: [`ford-diesel-dpf.toml`](src/obdruid/core/pidsets/ford-diesel-dpf.toml) is derived
+from [OBDb](https://github.com/OBDb) and licensed CC BY-SA 4.0.
 
 This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
 without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.

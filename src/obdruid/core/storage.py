@@ -52,6 +52,26 @@ class Storage:
         self.root = Path(root) if root else default_data_dir()
         self._lock = threading.RLock()
 
+    @property
+    def pidsets_dir(self) -> Path:
+        """The user's own PID set files (manufacturer parameters), see core/custom_pids.py."""
+        return self.root / "pidsets"
+
+    def save_pidset(self, set_id: str, text: str) -> Path:
+        """Store an already validated PID set file under its id."""
+        with self._lock:
+            self.pidsets_dir.mkdir(parents=True, exist_ok=True)
+            path = self.pidsets_dir / f"{self._check_id(set_id)}.toml"
+            path.write_text(text, encoding="utf-8")
+            return path
+
+    def delete_pidset(self, set_id: str) -> None:
+        with self._lock:
+            path = self.pidsets_dir / f"{self._check_id(set_id)}.toml"
+            if not path.is_file():
+                raise StorageError("Unknown PID set")
+            path.unlink()
+
     # ------------------------------------------------------------------ low level
     def _read(self, path: Path, fallback: Any) -> Any:
         try:
@@ -123,7 +143,7 @@ class Storage:
             for v in data["vehicles"]:
                 if v["id"] != vehicle_id:
                     continue
-                for key in ("name", "vin", "fuel", "notes", "connection"):
+                for key in ("name", "vin", "fuel", "notes", "connection", "pidsets", "pid_probe"):
                     if key in changes and changes[key] is not None:
                         v[key] = changes[key]
                 if v["fuel"] not in FUELS:

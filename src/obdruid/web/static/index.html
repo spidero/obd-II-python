@@ -237,6 +237,16 @@
         <div class="readiness" id="readiness"><p class="muted">No data.</p></div>
       </div>
       <div class="card">
+        <h3>Manufacturer parameters</h3>
+        <p class="muted">Extra values read with the car maker's own identifiers, for example the soot load of a particulate filter. Switch a set on for this car and the program checks once which of its parameters the car answers. Reading only: nothing is written to the car.</p>
+        <div id="pidsets"><p class="muted">No data.</p></div>
+        <div class="pidsets-actions">
+          <button class="btn" id="btn-pidsets-probe" title="Ask the car again for every parameter of the sets that are switched on">Check again</button>
+          <button class="btn" id="btn-pidsets-import">Import a file…</button>
+          <input type="file" id="pidsets-file" accept=".toml" hidden>
+        </div>
+      </div>
+      <div class="card">
         <h3>Supported parameters</h3>
         <div class="table-wrap"><table class="table" id="params-table"><tbody><tr><td class="muted">No data.</td></tr></tbody></table></div>
       </div>

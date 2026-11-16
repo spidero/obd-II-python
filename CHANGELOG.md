@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **Manufacturer parameters (PID sets):** values read with the car maker's own identifiers (UDS service 22),
+  described in TOML files – formula, unit, module address, gauge limits. Sets are switched on per car, probed
+  once and then shown like any other parameter (dashboard, CSV, `obdruid live`). Read only by design.
+  New card in *Vehicle info*, `obdruid did` for a single raw read, a demo set in the simulator
+  (`--sim-fault dpf_regen`, `dpf_full`).
+- First set for real cars: **Ford diesel – particulate filter**, candidates converted from OBDb (CC BY-SA 4.0),
+  marked unverified until confirmed on a car. Service 21 data blocks (Hyundai/Kia, Toyota) can be read too.
+
+### Changed
+- Python 3.11 or newer is required (3.10 reached its end of life); CI runs on 3.11–3.14.
+
 ## 0.5.0 – 2026-11-15
 
 First public release under the name **OBDruid** (formerly OBD Tool).

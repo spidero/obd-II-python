@@ -173,6 +173,7 @@ function showTab(name) {
   $$(".tab").forEach(t => t.toggleAttribute("data-active", t.id === "tab-" + name));
   store.set("tab", name);
   if (name === "info" && ui.state === "connected") loadInfo();
+  if (name === "info") loadPidSets();
   if (name === "conn") loadPorts();
   if (name === "conn") loadAdapters();
   if (name === "health" && !$("#health-result").children.length) loadLastHealth();
@@ -227,6 +228,8 @@ async function onConnected() {
   try {
     const data = await api("/api/params");
     ui.params = data.params;
+    // parameters from PID set files bring their own Polish label
+    if (i18n.lang === "pl") for (const p of ui.params) if (p.label_pl && !(p.label in i18n.strings)) i18n.strings[p.label] = p.label_pl;
     ui.defaults = data.default;
     ui.tileDefaults = data.tiles || {};
     await loadLayout();
@@ -638,7 +641,7 @@ function buildPicker(selected) {
     for (const p of items) {
       const input = el("input", { type: "checkbox", value: p.key });
       input.checked = selected.includes(p.key);
-      box.append(el("label", {}, input, el("span", { text: t(p.label) + (p.unit ? ` [${p.unit}]` : "") }), el("small", { text: p.pid })));
+      box.append(el("label", {}, input, el("span", { text: t(p.label) + (p.unit ? ` [${p.unit}]` : "") }), el("small", { text: p.status === "unverified" ? `${p.pid} · ${t("unverified")}` : p.pid })));
     }
   }
 }
@@ -1292,16 +1295,114 @@ async function loadInfo() {
         el("small", { text: t.complete ? "complete" : "incomplete" })));
     }
     const table = $("#params-table");
-    table.replaceChildren(el("thead", {}, el("tr", {}, ...["PID", "Name", "Unit", "Group", "Key"].map(h => el("th", { text: h })))));
+    table.replaceChildren(el("thead", {}, el("tr", {}, ...["PID", "Name", "Unit", "Group", "Key", "Source"].map(h => el("th", { text: h })))));
     const body = el("tbody");
     for (const p of params.params) {
       body.append(el("tr", {}, el("td", { class: "mono", text: p.pid }), el("td", { text: p.label }),
-        el("td", { text: p.unit }), el("td", { text: p.group }), el("td", { class: "mono muted", text: p.key })));
+        el("td", { text: p.unit }), el("td", { text: p.group }), el("td", { class: "mono muted", text: p.key }),
+        el("td", { class: "muted", text: p.source ? (p.status === "unverified" ? `${p.source} · ${t("unverified")}` : p.source) : "" })));
     }
     table.append(body);
   } catch (e) { toast(e.message, true); }
 }
-$("#btn-info").addEventListener("click", loadInfo);
+$("#btn-info").addEventListener("click", () => { loadInfo(); loadPidSets(); });
+
+// ---------------------------------------------------------------- manufacturer parameters (PID sets)
+// What the car said when a parameter was asked for the first time.
+function probeChip(result) {
+  if (result === "ok") return el("span", { class: "chip ok", text: "answers" });
+  if (result === "none") return el("span", { class: "chip", text: "no answer" });
+  if (result === "bad") return el("span", { class: "chip warn", text: "answer too short" });
+  if (result && result.startsWith("nrc")) {
+    const code = result.slice(3);
+    const why = { "31": "not in this car", "33": "access denied", "11": "service not supported" }[code];
+    return el("span", { class: "chip warn", text: why || t("refused (code {code})", { code }), title: `7F 22 ${code}` });
+  }
+  return el("span", { class: "chip", text: "not checked yet" });
+}
+
+function renderPidSets(data) {
+  const box = $("#pidsets");
+  box.replaceChildren();
+  $("#btn-pidsets-probe").disabled = !data.connected || !data.sets.some(s => s.enabled);
+  for (const e of data.errors) {
+    box.append(el("p", { class: "pidset-error", text: t("The file {file} was skipped: {error}", { file: e.file, error: e.error }) }));
+  }
+  if (!data.sets.length) {
+    box.append(el("p", { class: "muted", text: "No sets yet. Import a file to add parameters for your car." }));
+    return;
+  }
+  for (const s of data.sets) {
+    const toggle = el("input", { type: "checkbox" });
+    toggle.checked = s.enabled;
+    toggle.disabled = s.locked;
+    toggle.addEventListener("change", async () => {
+      const ids = data.sets.filter(x => !x.locked && (x.id === s.id ? toggle.checked : x.enabled)).map(x => x.id);
+      await changePidSets("/api/pidsets/enabled", { method: "PUT", body: { ids } });
+    });
+    const answered = s.params.filter(p => p.probe === "ok").length;
+    const checked = s.params.some(p => p.probe);
+    const chips = el("span", { class: "chips" });
+    chips.append(el("span", { class: "chip", text: s.builtin ? "built-in" : "your file" }));
+    if (s.suggested) chips.append(el("span", { class: "chip info", text: "matches this car" }));
+    if (s.params.some(p => p.status === "unverified")) {
+      chips.append(el("span", { class: "chip warn", text: "has unverified parameters",
+        title: "Taken from a list that was not confirmed on a real car - treat the values with care" }));
+    }
+    if (s.enabled && checked) {
+      chips.append(el("span", { class: "chip " + (answered ? "ok" : ""), text: t("{n} of {m} answer", { n: answered, m: s.params.length }) }));
+    }
+    const head = el("div", { class: "pidset-head" }, el("label", {}, toggle, el("strong", { text: s.name })), chips);
+    if (!s.builtin) {
+      const del = el("button", { class: "btn btn-small", type: "button", text: "Delete" });
+      del.addEventListener("click", () => {
+        if (confirm(t("Delete the set “{name}”?", { name: s.name }))) changePidSets(`/api/pidsets/${s.id}`, { method: "DELETE" });
+      });
+      head.append(del);
+    }
+    const rows = el("tbody");
+    for (const p of s.params) {
+      const label = i18n.lang === "pl" && p.label_pl ? p.label_pl : p.label;
+      const name = el("td", {}, label);
+      if (p.note) name.title = p.note;
+      rows.append(el("tr", {}, el("td", { class: "mono", text: p.request }), el("td", { class: "mono", text: p.header }), name,
+        el("td", { text: p.unit }), el("td", { class: "muted", text: p.status === "unverified" ? "unverified" : "verified" }),
+        el("td", {}, s.enabled ? probeChip(p.probe) : null)));
+    }
+    const table = el("table", { class: "table" },
+      el("thead", {}, el("tr", {}, ...["Request", "Module", "Name", "Unit", "Status", "In this car"].map(h => el("th", { text: h })))), rows);
+    const details = el("details", { class: "pidset" },
+      el("summary", { text: t("{n} parameters", { n: s.params.length }) }),
+      s.source ? el("p", { class: "muted" }, `${t("Source")}: ${s.source}` + (s.license ? ` · ${t("License")}: ${s.license}` : "")) : null,
+      s.note ? el("p", { class: "muted" }, s.note) : null,
+      el("div", { class: "table-wrap" }, table));
+    box.append(el("div", { class: "pidset-item" }, head, details));
+  }
+}
+
+async function loadPidSets() {
+  try { renderPidSets(await api("/api/pidsets")); } catch (e) { toast(e.message, true); }
+}
+
+async function changePidSets(path, options) {
+  try {
+    const data = await api(path, options);
+    renderPidSets(data);
+    if (ui.state === "connected") onConnected();  // the list of live parameters changed
+  } catch (e) { toast(e.message, true); loadPidSets(); }
+}
+$("#btn-pidsets-probe").addEventListener("click", async () => {
+  toast("Asking the car for every parameter…");
+  await changePidSets("/api/pidsets/probe", { method: "POST" });
+});
+$("#btn-pidsets-import").addEventListener("click", () => $("#pidsets-file").click());
+$("#pidsets-file").addEventListener("change", async ev => {
+  const file = ev.target.files[0];
+  ev.target.value = "";
+  if (!file) return;
+  if (file.size > 256 * 1024) { toast("The file is too large", true); return; }
+  await changePidSets("/api/pidsets", { method: "POST", body: { text: await file.text() } });
+});
 
 // ---------------------------------------------------------------- connection form
 async function loadPorts() {

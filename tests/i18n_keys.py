@@ -77,11 +77,12 @@ _NOT_TEXT = re.compile(r"^([#.\[/$]|https?:|[a-z0-9_.:-]+$|[A-Z0-9_]+$|obd\.|use
 
 
 # string literals of app.js that are code (css classes, selectors), not text
-JS_IGNORE = {"btn btn-danger", "btn btn-primary", "card all-clear", "card freeze", "card health-summary",
+JS_IGNORE = {"btn btn-danger", "btn btn-primary", "btn btn-small", "chip ok", "chip info", "chip warn", "card all-clear", "card freeze", "card health-summary",
              "mon-bar none", "mono muted", "muted group-note", "script, style, [data-i18n-html]", "table wrap",
              "viewBox", "not supported", "should work", "{email}", "Bluetooth", "BLE", "ble://", "rfcomm://", "socket://", "&print=1", "serviceWorker", "nosupport", "obd.support"}
 # lower-case words the script shows that the literal filter cannot tell from code
-JS_EXTRA = {"complete", "incomplete", "simulator", "ON", "off", "petrol", "diesel", "lpg", "OK"}
+JS_EXTRA = {"complete", "incomplete", "simulator", "ON", "off", "petrol", "diesel", "lpg", "OK",
+            "unverified", "verified", "answers", "built-in"}
 
 
 def js_keys() -> set[str]:
