@@ -329,7 +329,24 @@ Sets that come with the program:
 |---|---|---|
 | Ford diesel – particulate filter | soot load, distance since regeneration, regeneration status, differential pressure, exhaust temperatures | **unverified** candidates converted from [OBDb/Ford](https://github.com/OBDb/Ford) (CC BY-SA 4.0); not yet confirmed on a car |
 | Hyundai i30 (2007–2012) petrol – engine | oil temperature, commanded idle speed, MAP sensor voltage, injection times (service 21 blocks) | **unverified** candidates converted from [OBDb/Hyundai-i30](https://github.com/OBDb/Hyundai-i30) (CC BY-SA 4.0) |
+| VW group (VW, Audi, Seat, Škoda, Cupra) – engine and gearbox | fuel pressures (low and high), boost pressure, oil level and temperature, misfires, camshaft adjustment, DSG clutch temperatures | **unverified**, 80 parameters merged from 69 OBDb models (CC BY-SA 4.0) |
+| Toyota – engine and gearbox | service 21 blocks: fuel trims, air-fuel sensors, catalyst temperatures, knock, throttle, oil and gearbox temperatures (also Peugeot 107 / Citroën C1) | **unverified**, 80 parameters from 40 OBDb models (CC BY-SA 4.0) |
+| Hyundai / Kia – engine and gearbox | injection times, misfires per cylinder, knock retard, gearbox oil temperature, current gear | **unverified**, 80 parameters from 56 OBDb models (CC BY-SA 4.0) |
+| Renault / Dacia – engine and gearbox | coolant and oil temperature, boost and manifold pressure, particulate filter pressure, knock per cylinder, oil dilution, gearbox temperature | **unverified**, 80 parameters from 15 OBDb models (CC BY-SA 4.0) |
 | Simulator – particulate filter | demo for `--sim` | made-up identifiers |
+
+The make-wide sets are merged over many models and engines, mostly from recent years: a given car
+answers only a part of them, and probing a set takes a little while (it asks for each identifier
+once). There is no set for Peugeot/Citroën/Opel engines yet – OBDb has hardly any data for their
+engine modules. Other makes can be converted with
+[`tools/obdb_convert.py`](tools/obdb_convert.py) (needs only Python):
+
+```bash
+python tools/obdb_convert.py --fetch Mazda --id mazda --name "Mazda – engine" --wmi JM1,JMZ -o mazda.toml
+```
+
+and the file imported in the *Manufacturer parameters* card. `--labels-pl tools/obdb-labels-pl.json`
+adds the Polish labels that are already translated.
 
 Your own set is a TOML file, imported in the same card (or put in `~/.local/share/obdruid/pidsets/`):
 
@@ -548,8 +565,9 @@ GNU General Public License as published by the Free Software Foundation, either
 (SPDX: `GPL-2.0-or-later`).
 
 PID set files converted from community databases keep the license of their source, stated at the
-top of each file: the Ford and Hyundai sets in [`core/pidsets`](src/obdruid/core/pidsets/) are derived
-from [OBDb](https://github.com/OBDb) and licensed CC BY-SA 4.0.
+top of each file: the Ford, Hyundai, VW group, Toyota, Hyundai/Kia and Renault/Dacia sets in
+[`core/pidsets`](src/obdruid/core/pidsets/) are derived from [OBDb](https://github.com/OBDb) and licensed
+CC BY-SA 4.0, and so is every file written by `tools/obdb_convert.py`.
 
 This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
 without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
