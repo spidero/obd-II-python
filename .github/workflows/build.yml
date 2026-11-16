@@ -39,12 +39,14 @@ jobs:
           ./obdruid-cli.exe --version
           ./obdruid-cli.exe --sim info
           ./obdruid-cli.exe --sim did 22F190
-          ./obdruid-cli.exe --sim pids | grep -q "22DD01"
+          # into files, not `| grep -q`: grep -q closes the pipe early and the write fails on Windows
+          ./obdruid-cli.exe --sim pids > pids.txt
+          grep -q "22DD01" pids.txt
           ./obdruid-cli.exe --sim web --web-port 8097 &
           for i in $(seq 1 40); do curl -fs http://127.0.0.1:8097/api/state | grep -q '"connected"' && break; sleep 1; done
           curl -fs http://127.0.0.1:8097/api/state
           curl -fs http://127.0.0.1:8097/app.js > /dev/null
-          curl -fs http://127.0.0.1:8097/api/pidsets | grep -q simulator
+          curl -fs -o pidsets.json http://127.0.0.1:8097/api/pidsets && grep -q simulator pidsets.json
           test -f OBDruid.exe
       - name: Zip
         shell: pwsh
@@ -95,7 +97,7 @@ jobs:
           for i in $(seq 1 40); do curl -fs http://127.0.0.1:8097/api/state | grep -q '"connected"' && break; sleep 1; done
           curl -fs http://127.0.0.1:8097/api/state
           curl -fs http://127.0.0.1:8097/app.js > /dev/null
-          curl -fs http://127.0.0.1:8097/api/pidsets | grep -q simulator
+          curl -fs -o pidsets.json http://127.0.0.1:8097/api/pidsets && grep -q simulator pidsets.json
       - uses: actions/upload-artifact@v4
         with:
           name: appimage-${{ matrix.arch }}
