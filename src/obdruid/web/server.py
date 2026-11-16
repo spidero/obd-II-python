@@ -88,8 +88,9 @@ class AppState:
         """Pick the profile of the connected car and note the settings that worked."""
         try:
             info = self.session.adapter_info()
-            vehicle = self.storage.select_for_vin(self.session.vin(), simulated=self.session.simulated,
-                                                  port=info.port)
+            vin, fingerprint = self.session.identify()
+            vehicle = self.storage.select_for_vin(vin, simulated=self.session.simulated, port=info.port,
+                                                  fingerprint=fingerprint)
             if not self.session.simulated:
                 self.storage.update(vehicle["id"], connection={
                     "port": info.port, "baudrate": self.settings.baudrate, "protocol": info.protocol_id,

@@ -80,7 +80,9 @@ def _select_vehicle(session: ObdSession):
     """Activate the profile of the connected car (the simulator has its own). None if storage fails."""
     try:
         storage = _storage()
-        vehicle = storage.select_for_vin(session.vin(), simulated=session.simulated)
+        vin, fingerprint = session.identify()
+        vehicle = storage.select_for_vin(vin, simulated=session.simulated,
+                                         port=session.settings.port, fingerprint=fingerprint)
     except (OSError, ObdError):
         return None
     try:
@@ -445,7 +447,8 @@ def clear(
 
             try:
                 storage = _storage()
-                storage.select_for_vin(s.vin(), simulated=s.simulated)
+                vin, fingerprint = s.identify()
+                storage.select_for_vin(vin, simulated=s.simulated, port=s.settings.port, fingerprint=fingerprint)
                 backup = backup_before_clear(s, storage)
                 if backup:
                     console.print(f"Backup saved: {storage.record_path(storage.active()['id'], backup['id'])}")

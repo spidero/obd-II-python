@@ -146,7 +146,7 @@ class Storage:
             for v in data["vehicles"]:
                 if v["id"] != vehicle_id:
                     continue
-                for key in ("name", "vin", "fuel", "notes", "connection", "pidsets", "pid_probe"):
+                for key in ("name", "vin", "fuel", "notes", "connection", "pidsets", "pid_probe", "fingerprint"):
                     if key in changes and changes[key] is not None:
                         v[key] = changes[key]
                 if v["fuel"] not in FUELS:
@@ -181,7 +181,8 @@ class Storage:
             self._save(data)
             shutil.rmtree(self._dir(vehicle_id), ignore_errors=True)
 
-    def select_for_vin(self, vin: Optional[str], simulated: bool = False, port: Optional[str] = None) -> dict:
+    def select_for_vin(self, vin: Optional[str], simulated: bool = False, port: Optional[str] = None,
+                       fingerprint: Optional[dict] = None) -> dict:
         """Pick (and activate) the profile for the connected car.
 
         The simulator always gets its own "Simulator" profile, so test data never lands
@@ -189,11 +190,19 @@ class Storage:
         else the active one if it has no VIN and no history yet (it adopts the VIN), else a
         new profile – a profile that already holds another car's history never adopts a VIN.
 
-        A real car without a VIN can only be told apart by its adapter, so it gets: the profile
-        without a VIN that last connected through the same `port`, else the active profile if it
-        has no VIN, else the only profile without a VIN, else a new profile. A profile with a VIN
-        never receives a car that reports none – that is another car.
+        A real car without a VIN is told apart by its `fingerprint` (protocol, answering modules,
+        supported PIDs – see vehicle_id): it gets the profile without a VIN with the same
+        fingerprint; else, among the profiles whose fingerprint does not say "another car", the
+        one that last connected through the same `port`, else the active profile, else the only
+        one; else a new profile. A profile with a VIN never receives a car that reports none.
+        The chosen profile remembers the fingerprint.
         """
+        vehicle = self._select(vin, simulated, port, fingerprint)
+        if fingerprint and not vehicle.get("simulator") and vehicle.get("fingerprint") != fingerprint:
+            vehicle = self.update(vehicle["id"], fingerprint=fingerprint)
+        return vehicle
+
+    def _select(self, vin: Optional[str], simulated: bool, port: Optional[str], fingerprint: Optional[dict]) -> dict:
         with self._lock:
             everyone = self.vehicles()
             if simulated:
@@ -207,7 +216,7 @@ class Storage:
             if active.get("simulator"):  # coming back from the simulator
                 active = self.activate(real[0]["id"]) if real else self.create("My car")
             if not vin:
-                return self._select_without_vin(real, active, port)
+                return self._select_without_vin(real, active, port, fingerprint)
             for v in real:
                 if v.get("vin") == vin:
                     return self.activate(v["id"])
@@ -218,13 +227,24 @@ class Storage:
             info = decode(vin)
             return self.create((info and info.label) or f"Car {vin[-6:]}", vin=vin)
 
-    def _select_without_vin(self, real: list[dict], active: dict, port: Optional[str]) -> dict:
+    def _select_without_vin(self, real: list[dict], active: dict, port: Optional[str],
+                            fingerprint: Optional[dict] = None) -> dict:
+        from .vehicle_id import same_car
+
         no_vin = [v for v in real if not v.get("vin")]
+        if fingerprint:
+            same = [v for v in no_vin if same_car(v.get("fingerprint"), fingerprint)]
+            if same:
+                on_port = [v for v in same if port and (v.get("connection") or {}).get("port") == port]
+                chosen = (on_port or ([active] if active in same else []) or same)[0]
+                return self.activate(chosen["id"])
+            # profiles of other cars are out; the ones never fingerprinted may still be this car
+            no_vin = [v for v in no_vin if same_car(v.get("fingerprint"), fingerprint) is not False]
         if port:
             for v in no_vin:
                 if (v.get("connection") or {}).get("port") == port:
                     return self.activate(v["id"])
-        if not active.get("vin"):
+        if not active.get("vin") and same_car(active.get("fingerprint"), fingerprint) is not False:
             return active
         if len(no_vin) == 1:
             return self.activate(no_vin[0]["id"])

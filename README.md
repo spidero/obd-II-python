@@ -392,7 +392,10 @@ car? Please share them in an issue or a pull request.
 
 Each vehicle has a profile (name, VIN, fuel, notes), its own dashboard layout and a history of health
 reports, pre-clear backups and trips – see the History tab or `obdruid history`. Cars that report a
-VIN are recognised automatically; the simulator always uses its own “Simulator” profile. Tick two
+VIN are recognised automatically. A car that does not report its VIN (common on older cars) is
+recognised by its fingerprint – the OBD protocol, the modules that answer and the standard PIDs it
+supports – so two such cars on one adapter keep separate profiles. The simulator always uses its own
+“Simulator” profile. Tick two
 health reports to compare them, for example before and after a repair. Files are plain JSON in
 `~/.local/share/obdruid` (override with `OBDRUID_DATA`).
 

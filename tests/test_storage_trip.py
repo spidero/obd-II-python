@@ -168,3 +168,56 @@ def test_data_dir_on_windows(tmp_path, monkeypatch):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("APPDATA", str(tmp_path))
     assert default_data_dir() == tmp_path / "OBDruid"
+
+
+def _fp(protocol="6", ecus=("00",), pids=range(1, 40)):
+    from obdruid.core.vehicle_id import make_fingerprint
+
+    return make_fingerprint(protocol, ecus, pids)
+
+
+def test_fingerprint_comparison():
+    from obdruid.core.vehicle_id import describe, same_car
+
+    car = _fp(pids=list(range(1, 33)))
+    assert same_car(car, _fp(pids=list(range(1, 33)))) is True
+    assert same_car(car, _fp(pids=list(range(1, 31)))) is True              # a lost mask is tolerated
+    assert same_car(car, _fp(pids=[1, 3, 4, 5, 12, 13])) is False           # another engine
+    assert same_car(car, _fp(protocol="3", pids=list(range(1, 33)))) is False
+    assert same_car(car, _fp(ecus=("00", "01"), pids=list(range(1, 33)))) is False   # a gearbox module answers too
+    assert same_car(car, None) is None and same_car(None, None) is None
+    assert _fp(pids=[]) is None
+    assert describe(car) == "protocol 6, modules 00, 32 PIDs"
+
+
+def test_two_cars_without_vin_on_one_adapter(tmp_path):
+    """The common case: one adapter, two old cars without a VIN - only the fingerprint tells them apart."""
+    st = Storage(tmp_path)
+    usb = "/dev/ttyUSB0"
+    transit, i30 = _fp(protocol="6", ecus=("00", "01"), pids=range(1, 50)), _fp(protocol="3", pids=range(1, 20))
+    first = st.select_for_vin(None, port=usb, fingerprint=transit)
+    st.update(first["id"], connection={"port": usb})
+    assert st.get(first["id"])["fingerprint"] == transit                     # remembered in the profile
+
+    second = st.select_for_vin(None, port=usb, fingerprint=i30)               # same adapter, another car
+    assert second["id"] != first["id"] and second["name"] == "Car without VIN"
+    st.update(second["id"], connection={"port": usb})
+
+    assert st.select_for_vin(None, port=usb, fingerprint=transit)["id"] == first["id"]
+    assert st.select_for_vin(None, port=usb, fingerprint=i30)["id"] == second["id"]
+    assert st.select_for_vin(None, port="ble://AA", fingerprint=transit)["id"] == first["id"]  # any adapter
+
+    # an old profile without a fingerprint is taken over by the first car that fits
+    st2 = Storage(tmp_path / "old")
+    old = st2.active()
+    st2.update(old["id"], connection={"port": usb})
+    assert st2.select_for_vin(None, port=usb, fingerprint=i30)["id"] == old["id"]
+    assert st2.get(old["id"])["fingerprint"] == i30
+    assert st2.select_for_vin(None, port=usb, fingerprint=transit)["id"] != old["id"]
+
+
+def test_fingerprint_never_moves_a_car_with_a_vin(tmp_path):
+    st = Storage(tmp_path)
+    car = st.select_for_vin("WF0XXXTTFXDM00001", fingerprint=None)
+    assert st.select_for_vin(None, fingerprint=_fp())["id"] != car["id"]
+    assert st.select_for_vin("WF0XXXTTFXDM00001")["id"] == car["id"]

@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **Cars without a VIN are recognised by their fingerprint** (protocol, answering modules, supported PIDs), not
+  only by the adapter: two such cars on one adapter keep their own profiles, history and PID sets.
+
+### Fixed
+- The command line ends quietly when the reader of its output goes away (`| more`, `| head`); on Windows it
+  crashed with `OSError: [Errno 22]`.
+
 ## 0.7.0 – 2026-11-16
 
 Manufacturer parameters for more makes.
