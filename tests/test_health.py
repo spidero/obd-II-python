@@ -152,7 +152,7 @@ def test_cli_health_json(tmp_path):
     data = json.loads(r.output)
     assert data["grade"] == "Poor"
     assert any(f["key"] == "cooling" and f["severity"] == "critical" for f in data["findings"])
-    assert out.read_text().startswith("<!doctype html>")
+    assert out.read_text(encoding="utf-8").startswith("<!doctype html>")
 
 
 def test_cli_unknown_fault():

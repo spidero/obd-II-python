@@ -6,7 +6,8 @@ Everything is plain JSON under one data directory:
     vehicles/<id>/dashboard.json       dashboard layout of that vehicle
     vehicles/<id>/history/<id>.json    health reports, pre-clear backups, trips
 
-The directory is $OBDRUID_DATA, or $XDG_DATA_HOME/obdruid, or ~/.local/share/obdruid.
+The directory is $OBDRUID_DATA, or $XDG_DATA_HOME/obdruid, or ~/.local/share/obdruid
+(on Windows: %APPDATA%\\OBDruid).
 """
 
 from __future__ import annotations
@@ -29,6 +30,8 @@ def default_data_dir() -> Path:
     for var in ("OBDRUID_DATA", "OBD_TOOL_DATA"):  # OBD_TOOL_DATA: name used before the rename to OBDruid
         if os.environ.get(var):
             return Path(os.environ[var])
+    if os.name == "nt":  # Windows: %APPDATA%\\OBDruid
+        return Path(os.environ.get("APPDATA") or os.path.join(os.path.expanduser("~"), "AppData", "Roaming")) / "OBDruid"
     base = Path(os.environ.get("XDG_DATA_HOME") or os.path.join(os.path.expanduser("~"), ".local", "share"))
     new, old = base / "obdruid", base / "obd-tool"
     if not new.exists() and old.is_dir():

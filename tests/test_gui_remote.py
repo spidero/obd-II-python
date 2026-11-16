@@ -42,3 +42,44 @@ def test_cli_remote_unreachable():
     r = CliRunner().invoke(cli_app, ["gui", "--remote", f"127.0.0.1:{port}"])
     assert r.exit_code == 1
     assert "No OBDruid server" in r.output
+
+
+# ---------------------------------------------------------------- desktop builds (no terminal, UI in the browser)
+def test_browser_mode_quits_when_the_tab_is_gone():
+    assert not gui._abandoned(None, started=0, now=gui.NEVER_OPENED - 1)      # still waiting for the browser
+    assert gui._abandoned(None, started=0, now=gui.NEVER_OPENED + 1)          # it never came
+    assert not gui._abandoned(100.0, started=0, now=100 + gui.IDLE_QUIT - 1)  # a hidden tab polls once a minute
+    assert gui._abandoned(100.0, started=0, now=100 + gui.IDLE_QUIT + 1)
+
+
+def test_server_notes_the_last_request(tmp_path):
+    from fastapi.testclient import TestClient
+
+    from obdruid.core import ConnectionSettings
+    from obdruid.core.storage import Storage
+    from obdruid.web.server import create_app
+
+    app = create_app(ConnectionSettings(), connect=False, storage=Storage(tmp_path))
+    with TestClient(app) as client:
+        assert app.state.obd.last_seen is None
+        client.get("/api/state")
+        assert app.state.obd.last_seen is not None
+
+
+def test_desktop_entry_runs_commands_and_survives_without_a_console(monkeypatch, capsys, tmp_path):
+    import sys
+
+    from obdruid import desktop
+
+    monkeypatch.setenv("OBDRUID_DATA", str(tmp_path))
+    monkeypatch.setattr(sys, "argv", ["OBDruid", "--version"])
+    with pytest.raises(SystemExit) as stop:
+        desktop.main()
+    assert stop.value.code == 0 and "obdruid" in capsys.readouterr().out.lower()
+    # a windowed Windows program has no stdout/stderr at all
+    monkeypatch.setattr(sys, "stdout", None)
+    monkeypatch.setattr(sys, "stderr", None)
+    desktop._log_when_there_is_no_console()
+    print("hello log")
+    sys.stdout.flush()
+    assert "hello log" in (tmp_path / "obdruid.log").read_text(encoding="utf-8")

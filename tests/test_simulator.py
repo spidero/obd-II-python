@@ -1,25 +1,27 @@
-import os
-import select
-import termios
-import tty
+import pytest
 
-from obdruid.core.simulator import Elm327Emulator
+from obdruid.core.simulator import Elm327Emulator, default_transport
+from simlink import SimLink
 
 
-def talk(fd, cmd, timeout=3.0):
-    os.write(fd, (cmd + "\r").encode())
+def talk(link, cmd, timeout=3.0):
+    link.write((cmd + "\r").encode())
     buf = b""
     while b">" not in buf:
-        ready, _, _ = select.select([fd], [], [], timeout)
-        assert ready, f"timeout waiting for answer to {cmd!r}, got {buf!r}"
-        buf += os.read(fd, 1024)
+        chunk = link.read(timeout=timeout)
+        assert chunk, f"timeout waiting for answer to {cmd!r}, got {buf!r}"
+        buf += chunk
     return [line for line in buf.decode().replace(">", "").split("\r") if line]
 
 
-def test_raw_dialogue():
-    with Elm327Emulator(stored_dtcs=["P0133", "P0420", "P0300", "P0171"]) as emu:
-        fd = os.open(emu.port, os.O_RDWR | os.O_NOCTTY)
-        tty.setraw(fd)
+# the pseudo terminal where the system has one, and the TCP port everywhere (it is the only one on Windows)
+TRANSPORTS = sorted({default_transport(), "tcp"})
+
+
+@pytest.mark.parametrize("transport", TRANSPORTS)
+def test_raw_dialogue(transport):
+    with Elm327Emulator(stored_dtcs=["P0133", "P0420", "P0300", "P0171"], transport=transport) as emu:
+        fd = SimLink(emu, raw=True)
         try:
             assert talk(fd, "ATZ")[-1] == "ELM327 v2.3"
             assert talk(fd, "ATE0") == ["ATE0", "OK"]          # echo still on for this one
@@ -38,4 +40,4 @@ def test_raw_dialogue():
             assert talk(fd, "04") == ["7E8 01 44"]
             assert talk(fd, "03") == ["7E8 02 43 00"]
         finally:
-            os.close(fd)
+            fd.close()

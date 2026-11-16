@@ -1,0 +1,106 @@
+name: Build
+
+# Standalone builds for people without Python: a Windows zip and Linux AppImages.
+# Runs by hand, on pull requests that touch the packaging, and when a GitHub release is published
+# (then the files are attached to the release).
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+  pull_request:
+    paths:
+      - "packaging/**"
+      - ".github/workflows/build.yml"
+      - "pyproject.toml"
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Build
+        run: |
+          pip install ".[gui]" pyinstaller
+          pyinstaller --noconfirm packaging/obdruid.spec
+      - name: Smoke test (simulator)
+        shell: bash
+        run: |
+          cd dist/OBDruid
+          ./obdruid-cli.exe --version
+          ./obdruid-cli.exe --sim info
+          ./obdruid-cli.exe --sim did 22F190
+          ./obdruid-cli.exe --sim pids | grep -q "22DD01"
+          ./obdruid-cli.exe --sim web --web-port 8097 &
+          for i in $(seq 1 40); do curl -fs http://127.0.0.1:8097/api/state | grep -q '"connected"' && break; sleep 1; done
+          curl -fs http://127.0.0.1:8097/api/state
+          curl -fs http://127.0.0.1:8097/app.js > /dev/null
+          curl -fs http://127.0.0.1:8097/api/pidsets | grep -q simulator
+          test -f OBDruid.exe
+      - name: Zip
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path src/obdruid/__init__.py -Pattern '__version__ = "(.*)"').Matches[0].Groups[1].Value
+          Compress-Archive -Path dist/OBDruid -DestinationPath "dist/OBDruid-$version-windows-x64.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64
+          path: dist/*.zip
+      - name: Attach to the release
+        if: github.event_name == 'release'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" dist/*.zip --clobber
+
+  appimage:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04        # oldest runner = oldest glibc the AppImage needs
+            arch: x86_64
+          - runner: ubuntu-22.04-arm    # Raspberry Pi / Orange Pi (64 bit)
+            arch: aarch64
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Build
+        run: |
+          pip install ".[web]" pyinstaller
+          pyinstaller --noconfirm packaging/obdruid.spec
+          sh packaging/build-appimage.sh
+      - name: Smoke test (simulator)
+        run: |
+          APP="$(ls dist/*.AppImage)"
+          "$APP" --appimage-extract-and-run --version
+          "$APP" --appimage-extract-and-run --sim info
+          "$APP" --appimage-extract-and-run --sim did 22F190
+          "$APP" --appimage-extract-and-run --sim web --web-port 8097 &
+          for i in $(seq 1 40); do curl -fs http://127.0.0.1:8097/api/state | grep -q '"connected"' && break; sleep 1; done
+          curl -fs http://127.0.0.1:8097/api/state
+          curl -fs http://127.0.0.1:8097/app.js > /dev/null
+          curl -fs http://127.0.0.1:8097/api/pidsets | grep -q simulator
+      - uses: actions/upload-artifact@v4
+        with:
+          name: appimage-${{ matrix.arch }}
+          path: dist/*.AppImage
+      - name: Attach to the release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" dist/*.AppImage --clobber

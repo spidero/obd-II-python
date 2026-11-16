@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=OBDruid
+GenericName=OBD-II diagnostics
+GenericName[pl]=Diagnostyka OBD-II
+Comment=Live data, trouble codes and a vehicle health check over an ELM327 adapter
+Comment[pl]=Dane na żywo, kody błędów i ocena stanu auta przez adapter ELM327
+Exec=obdruid
+Icon=obdruid
+Terminal=false
+Categories=Utility;
+Keywords=OBD;OBD2;ELM327;car;diagnostics;
