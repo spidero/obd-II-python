@@ -96,7 +96,8 @@ class TripComputer:
     def update(self, speed: Optional[float], fuel_rate: Optional[float] = None, maf: Optional[float] = None,
                now: Optional[float] = None) -> None:
         """Feed one sample. `now` is a monotonic time in seconds (defaults to the current time)."""
-        now = time.monotonic() if now is None else now
+        # perf_counter: the monotonic clock of Windows ticks every 15.6 ms, two quick reads would get the same time
+        now = time.perf_counter() if now is None else now
         flow = fuel_flow(self.fuel, fuel_rate, maf)
         if self.started is None:
             self.started = time.time()

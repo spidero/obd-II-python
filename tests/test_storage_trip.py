@@ -1,3 +1,5 @@
+import os
+
 import pytest
 
 from obdruid.core import ConnectionSettings, ObdSession
@@ -112,6 +114,7 @@ def test_dashboard_layout_per_vehicle(tmp_path):
     assert st.dashboard(st.create("Other")["id"]) is None
 
 
+@pytest.mark.skipif(os.name == "nt", reason="XDG folders and the obd-tool era are Linux only; Windows uses %APPDATA%")
 def test_data_dir_migrates_from_obd_tool(tmp_path, monkeypatch):
     from obdruid.core.storage import default_data_dir
     for var in ("OBDRUID_DATA", "OBD_TOOL_DATA"):
@@ -156,3 +159,12 @@ def test_car_without_vin_is_found_by_its_adapter(tmp_path):
     st.activate(diesel["id"])
     new = st.select_for_vin(None, port=bt2)
     assert new["id"] not in (petrol["id"], diesel["id"], other["id"]) and new["name"] == "Car without VIN"
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows data folder")
+def test_data_dir_on_windows(tmp_path, monkeypatch):
+    from obdruid.core.storage import default_data_dir
+    for var in ("OBDRUID_DATA", "OBD_TOOL_DATA"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    assert default_data_dir() == tmp_path / "OBDruid"

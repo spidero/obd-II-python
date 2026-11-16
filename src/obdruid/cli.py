@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import json
 import logging
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
@@ -24,6 +25,19 @@ app = typer.Typer(
     no_args_is_help=True,
     add_completion=False,
 )
+
+
+def _never_fail_on_output() -> None:
+    """Redirected output on Windows uses a legacy code page that has no "λ" or "–": show "?" instead of crashing."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            if stream is not None and "utf" not in (stream.encoding or "").lower():
+                stream.reconfigure(errors="replace")
+        except (AttributeError, ValueError, OSError):
+            pass
+
+
+_never_fail_on_output()
 console = Console()
 err = Console(stderr=True)
 

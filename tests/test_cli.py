@@ -58,7 +58,7 @@ def test_live_csv(tmp_path):
     out = tmp_path / "log.csv"
     r = runner.invoke(app, ["--sim", "live", "RPM", "SPEED", "-n", "3", "-i", "0.1", "--csv", str(out)])
     assert r.exit_code == 0, r.output
-    lines = out.read_text().splitlines()
+    lines = out.read_text(encoding="utf-8").splitlines()
     assert lines[0] == "time,RPM,SPEED" and len(lines) == 4
 
 
