@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **PID sets for more makes:** VW group (VW, Audi, Seat, Škoda, Cupra), Toyota, Hyundai / Kia and Renault / Dacia –
+  engine and gearbox parameters (80 per set) merged from the community database OBDb, with Polish labels.
+  Unverified: switch a set on and probing keeps what your car answers.
+- **`tools/obdb_convert.py`:** converts OBDb signal sets of any make into an OBDruid PID set (bit positions to
+  formulas, imperial to metric units, the most common parameters first); `--fetch Mazda` downloads the data.
+
 ## 0.6.1 – 2026-11-16
 
 ### Added
