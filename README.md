@@ -123,11 +123,37 @@ Any ELM327 compatible adapter (USB, Bluetooth via `rfcomm`) should work through
 
 ## Install
 
+### Without Python: ready-to-run downloads
+
+From version 0.6.0 every [release](https://github.com/spidero/obdruid/releases/latest) has builds that
+need no Python and no installation:
+
+| System | File | How to start |
+|---|---|---|
+| Windows 10/11 (64-bit) | `OBDruid-<version>-windows-x64.zip` | unpack, double-click `OBDruid.exe` |
+| Linux (64-bit PC) | `OBDruid-<version>-x86_64.AppImage` | `chmod +x OBDruid-*.AppImage`, then run it |
+| Linux on ARM (Raspberry Pi, Orange Pi, 64-bit) | `OBDruid-<version>-aarch64.AppImage` | same as above |
+
+- **Windows:** the app opens in its own window (Edge WebView2, part of Windows 10/11). The builds are not
+  code-signed yet, so SmartScreen may say *Windows protected your PC* – choose *More info → Run anyway*.
+  `obdruid-cli.exe` in the same folder is the command line tool: `obdruid-cli.exe --sim info`.
+  A USB adapter shows up as a COM port (`obdruid-cli.exe ports`); data is kept in `%APPDATA%\OBDruid`.
+- **Linux AppImage:** started without arguments it opens the interface in your web browser and quits
+  by itself a few minutes after you close the tab. With arguments it is the `obdruid` command:
+  `./OBDruid-*.AppImage --sim info`, `./OBDruid-*.AppImage web --host 0.0.0.0`.
+  No FUSE on your system? Add `--appimage-extract-and-run` as the first argument.
+  Serial adapters need access to the port: `sudo usermod -aG dialout $USER`, then log in again.
+- Try it without a car: tick *Simulator* in the *Connection* tab, or start with `--sim`.
+- Not in these builds yet: Bluetooth LE on Windows (use a USB adapter, or pair a classic Bluetooth
+  adapter and use its COM port).
+
+### With Python
+
 From a release (no git needed) – download the wheel from the
 [latest release](https://github.com/spidero/obdruid/releases/latest) and install it with pipx:
 
 ```bash
-pipx install --system-site-packages "obdruid-0.5.0-py3-none-any.whl[gui]"   # or [web] without the window
+pipx install --system-site-packages "obdruid-0.6.0-py3-none-any.whl[gui]"   # or [web] without the window
 ```
 
 From source:

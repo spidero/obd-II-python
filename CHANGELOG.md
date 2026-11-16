@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.6.0 – 2026-11-16
+
+Manufacturer parameters and ready-to-run builds for Windows and Linux.
 
 ### Added
 - **Manufacturer parameters (PID sets):** values read with the car maker's own identifiers (UDS service 22),
@@ -10,9 +12,24 @@
   (`--sim-fault dpf_regen`, `dpf_full`).
 - First sets for real cars: **Ford diesel – particulate filter** and **Hyundai i30 (2007–2012) petrol – engine**, candidates converted from OBDb (CC BY-SA 4.0),
   marked unverified until confirmed on a car. Service 21 data blocks (Hyundai/Kia, Toyota) can be read too.
+- **Ready-to-run builds without Python:** a Windows zip (`OBDruid.exe` + `obdruid-cli.exe`) and Linux AppImages
+  for x86_64 and aarch64, built and smoke-tested by CI and attached to every release.
+- Windows support in the core: the simulator works without a pseudo terminal, data lives in `%APPDATA%\OBDruid`,
+  the test suite also runs on Windows.
+- The desktop app quits by itself when it runs in the browser and its tab is closed.
 
 ### Changed
-- Python 3.11 or newer is required (3.10 reached its end of life); CI runs on 3.11–3.14.
+- Python 3.11 or newer is required (3.10 reached its end of life); CI runs on 3.11–3.14 and on Windows.
+
+### Fixed
+- Windows: the command line no longer crashes when its output is redirected (legacy code page); the trip
+  computer counts time between quick reads (coarse system clock).
+
+### Known limitations
+- Manufacturer parameter sets for real cars are unverified candidates – confirm the values before relying on them.
+- The Windows build was tested by CI against the simulator only; a real adapter on a COM port and the window
+  (WebView2) still need a test on a real PC. The builds are not code-signed (SmartScreen warning).
+- The Linux AppImage opens the interface in the web browser (no native window).
 
 ## 0.5.0 – 2026-11-15
 
