@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.7.1 – 2026-11-17
+
+Cars without a VIN, particulate filter in the health check.
 
 ### Added
 - **Cars without a VIN are recognised by their fingerprint** (protocol, answering modules, supported PIDs), not
@@ -12,6 +14,7 @@
 ### Fixed
 - The command line ends quietly when the reader of its output goes away (`| more`, `| head`); on Windows it
   crashed with `OSError: [Errno 22]`.
+- `obdruid health` uses the car's manufacturer parameters: the PID sets were switched on only after the check.
 
 ## 0.7.0 – 2026-11-16
 

@@ -161,7 +161,7 @@ From a release (no git needed) – download the wheel from the
 [latest release](https://github.com/spidero/obdruid/releases/latest) and install it with pipx:
 
 ```bash
-pipx install --system-site-packages "obdruid-0.7.0-py3-none-any.whl[gui]"   # or [web] without the window
+pipx install --system-site-packages "obdruid-0.7.1-py3-none-any.whl[gui]"   # or [web] without the window
 ```
 
 From source:
